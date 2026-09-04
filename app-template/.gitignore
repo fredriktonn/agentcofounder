@@ -1,4 +1,5 @@
 node_modules/
-dist/
-result.json
+# Written by `npm test` (src/journeys.test.ts) and by the model, then read by the outer runner. A run's artifact,
+# never a source file — and a stale one committed into the seed would be the FIRST thing the runner reads.
 report.partial.json
+result.json

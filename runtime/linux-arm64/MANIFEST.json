@@ -1,0 +1,12 @@
+{
+  "rid": "linux-arm64",
+  "osySha": "79c382e845ed5c3bc0a434591d18f47f54c580fa",
+  "osyBin": "/tmp/osy-seed-final/runtime/linux-arm64/osy",
+  "pgTag": "pg17.10.0-pgvector0.8.0-r4",
+  "devName": "challenge",
+  "instanceSha256": "a5f043ce05590d11a94e7186952d27815286e9804ab67bce695fe7b9a6a3b206",
+  "instanceBytes": 28610046,
+  "builtUtc": "2026-09-04T17:51:48Z",
+  "builtOn": "Darwin arm64",
+  "clusterBuiltIn": "linux/arm64 container"
+}

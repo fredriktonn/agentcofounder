@@ -1,0 +1,17 @@
+/// A named per-environment app config setting (FN-5) — the NON-SECRET twin of SecretDefinition.
+/// Declared by `app.Config = [ new Setting("X") { Default = "…" } ]`; holds a PUBLIC value (an invite
+/// base URL, a from-address), never encrypted/redacted. Both environment value sets are BAKED at compile
+/// (the cloud has no filesystem, so `.env.development`/`.env.production` are compile inputs, not runtime
+/// reads); the running instance selects the set matching its own Development/Production mode.
+[Id("18395529-4942-4e93-a158-c6148e22fd7c")]
+sealed entity SettingDefinition {
+  /// Unique setting name (PascalCase, no spaces) — the `Config.X` read key.
+  [Id("fcab3b80-841e-4139-a1bb-3fb8aad4d553"), MaxLength(255)] string Name;
+  /// The source-declared inline `Default` (the dev fallback); null for a REQUIRED setting (no Default).
+  /// Renders back at decompile as `{ Default = "…" }`; the env value sets never round-trip through source.
+  [Id("ea227790-a68e-4f14-972a-536615e148d7")] string? DefaultValue;
+  /// The baked Development value = `.env.development[Name]` ?? DefaultValue. Read at runtime in Development mode.
+  [Id("eb21a11c-95a5-48ce-869d-b8ae7d040188")] string? DevelopmentValue;
+  /// The baked Production value = `.env.production[Name]` ?? DefaultValue. Read at runtime in Production mode.
+  [Id("45bf7886-7ec2-46eb-b54e-29cd1ec4a3a2")] string? ProductionValue;
+}

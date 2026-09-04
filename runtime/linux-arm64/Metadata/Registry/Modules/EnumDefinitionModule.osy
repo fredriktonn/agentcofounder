@@ -1,0 +1,38 @@
+/// A single member of an Enum. The localizable anchor a future translation catalog targets (DeclaredLabel + Description).
+[Id("6ec660db-722b-4daf-840b-29e2498d8c43")]
+sealed entity EnumValue {
+  /// Declaration position of this member within the enum (0-based)
+  [Id("5ab5a1dc-6e6c-4931-8b72-5c55a07ecb5c")] int Ordinal;
+  /// Stored string key when StorageType = String (the member code, or an explicit [Value])
+  [Id("9d75037c-5374-4dfd-885d-9feeebfd0430"), MaxLength(255)] string? StringValue;
+  /// Human-facing label ([Label]); falls back to Name when absent
+  [Id("4cc33c3d-c179-4aeb-949e-5222d00a5318"), MaxLength(500)] string? DeclaredLabel;
+  /// Stored integer key when StorageType = Int (the ordinal, or an explicit = N)
+  [Id("8e54b3e5-9bec-4804-99e6-2463d119a1ae")] int? IntValue;
+  /// The parent enum this member belongs to
+  [Id("7fed29dd-a3bf-4393-85e9-bc87bf61a8aa")] Enum Enum;
+  /// The member name = the code / api / wire identifier (e.g. Draft)
+  [Id("b9661b09-2fba-43d9-ba6c-befd8142c7fb"), MaxLength(255)] string Name;
+  /// Presentation ([Icon]): the declared icon name that stands for this member, so a dropdown/cell/badge renders it without a per-member if-chain
+  [Id("87a96167-fa15-4e0b-abe9-083c7f6c688f"), MaxLength(255)] string? Icon;
+  /// Presentation ([Tone]): the declared TONE — a qualified enum-member ref (e.g. `Tone.Accent`) naming this member's design-system tone; consumed by the tone-aware atoms
+  [Id("d6e18008-5bf5-4997-b7ad-7bf6b47bdbcd"), MaxLength(255)] string? Tone;
+}
+
+/// An Osy# enum: a declared value set lowered to platform metadata (the Osy# replacement for choice-as-enum). One row per declared enum; members live in EnumValue.
+[Id("62a4f751-7631-4107-b95e-096d6fc534c8")]
+sealed entity Enum {
+  /// When true, this enum is the app's security [Role] vocabulary — its members are the role names the runtime unions from assignment entities. At most one per application.
+  [Id("ed2632f4-ab24-4221-89fc-5a1e0f39f47f")] bool IsRoleEnum;
+  /// Namespace-model type visibility: 0 = Public (default), 1 = Internal. An enum is vocabulary, so it is public unless declared `internal`; `using X;` exposes a capability's public enums.
+  [Id("518150e2-6deb-4c1f-b185-bb0a9830c91c")] int Visibility;
+  [Id("ca8a2c88-92a2-4d70-a2c1-489d4a985924"), ForeignKey(Enum)] EnumValue[] Values;
+  /// Unique name identifying this enum (e.g. OrderStatus)
+  [Id("26522cb4-aab6-4c8f-81af-115573153631"), MaxLength(255)] string Name;
+  /// Persisted member key kind: 0 = Int (ordinal or explicit = N), 1 = String (the member code / [Value])
+  [Id("42665818-e722-4b75-846f-3a3a032b59b8")] int StorageType;
+  /// The bare source-module filename this enum was declared in (`ModuleName.osy`), stamped at compile so the
+  /// full-app export regenerates the enum into its own module file. Mirrors EntityMetadata.SourceFile; null when
+  /// compiled from a single anonymous source (or for a hardcoded seed enum).
+  [Id("4b1e5f65-16ac-4744-a34d-65b6c0388f8c")] string? SourceFile;
+}

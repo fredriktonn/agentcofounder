@@ -1,0 +1,706 @@
+/// A UI type reference (D-UI, Q7) — the dedicated UI type model the render surface needs (delegates, accessors, Binding<T>, Query<T>, slots, render-builder slots, generic params, child-collections), beyond the scalar/entity the expression layer's binding model carries. A small self-nesting tree: a composite type's element/argument/return are child UiTypeRefs by Role + Ordinal (e.g. `(T row) => V` = Accessor with Arg[T] + Return[V]; `Binding<int>` = Binding with Element[Scalar int]). Dedicated for now; may later reconcile with ResolvedType.
+[Id("3866a501-40cd-5c3a-8635-83a19ee5335e")]
+sealed entity UiTypeRef {
+  /// A delegate/accessor parameter's NAME when Role=Arg (`id` in `(string id) onSelect`); null otherwise. The type is this node; the name lets the source round-trip.
+  [Id("405d6b08-8a14-4d78-9cef-5cbe666b7f0d"), MaxLength(100)] string? ParamName;
+  /// The component when the type is a component (a Col<T>[] element, a builder-slot output, a slot's component).
+  [Id("79ad6eb4-e6ff-54c8-a5f4-fc63431e43cd")] UiComponent ComponentType;
+  /// The composite type this is a part of; null at the top (a consumer's Type FK points here).
+  [Id("77276136-35f0-5974-ad62-9a6feb78c917")] UiTypeRef Parent;
+  /// The entity when Kind=Entity.
+  [Id("fa41287b-3013-570c-a290-0167d144ad28")] EntityMetadata EntityType;
+  /// UiTypeRefKind: Scalar | Entity | Collection | GenericParam | Delegate | Accessor | Binding | Query | ContentSlot | BuilderSlot | UiValueType | Record | Void.
+  [Id("ced91bfa-87ac-5247-9d68-6ed0e710b5d2")] int Kind;
+  /// The type is nullable (`Icon?`, `Breakpoint?`).
+  [Id("5408ff15-7ade-5989-9149-0f6a2a2b7330")] bool Nullable;
+  /// UiTypeRefRole: Root | Element | Arg | Return — which slot of the parent this part fills.
+  [Id("b79d7a89-0af6-54e5-89db-ebdb8ddbbbcf")] int Role;
+  /// Order among sibling parts (delegate/accessor argument order).
+  [Id("0bc9ed43-11c7-5d0f-8809-ced8749a2945")] int Ordinal;
+  [Id("418f2d06-29b1-43bd-ad43-6922b6680519"), ForeignKey(Parent)] UiTypeRef[] Children;
+  /// The named type when Kind=UiValueType (Tone/Size/Align/Format/Icon/Color/Curve), Record (Sort/OpenTab/ViewRef), or GenericParam (T/V).
+  [Id("fef14851-4e1a-56e3-aeeb-7cd87db76710"), MaxLength(200)] string? TypeName;
+  /// PropertyTypeKind when Kind=Scalar.
+  [Id("74371dd9-e30c-564c-bb49-05a5eaed846f")] int ScalarType;
+}
+
+/// A single style property in a variant value's block (`bg: Surface`, `px: 4`, `rounded: Md`). The value is an expression (token-ref or scalar) so token references stay truth-in-metadata; compiles to a static CSS declaration.
+[Id("aed63abf-08b0-54b7-a45c-d0e28350fc40")]
+sealed entity UiVariantStyleProp {
+  /// The token-ref/scalar value (Purpose=UiValue).
+  [Id("0e0e190a-e068-5a27-a9b9-3c5ad4463105")] ExpressionRoot ValueExpr;
+  /// The owning variant value.
+  [Id("8671e0fd-6d32-53fb-bcc7-44a5f9b67628"), Required] UiVariantValue Value;
+  /// The style-prop name (camelCase: bg, color, px, rounded, gap).
+  [Id("8e87a7d3-948e-51ee-b2b6-597462ec3edd"), MaxLength(100)] string Name;
+  /// Declaration order.
+  [Id("7271f8ca-0e99-5c57-a25e-0fc9dd44f522")] int Ordinal;
+}
+
+/// A design token (L6), as a TREE: a group (Colors/Type/Space), a token (Primary/Surface), or a scale step (Primary.600, Radius.Md) — Parent + Ordinal give the nesting. The value is an expression (a literal, an array `[...]`, a call `TimeSpan.FromMs(120)`, or a token-ref `Border`) so static and data-driven (per-tenant, L6) tokens share one currency; null when the token has per-mode values (UiTokenModeValue) or is a group node. Breakpoints are tokens too (Category=Breakpoint) — app-declared, not language keywords.
+[Id("d64a4424-be78-50c8-ad10-7cb42ed1ccb4")]
+sealed entity UiToken {
+  /// The token name (PascalCase): Colors, Primary, 600, Md, Sm.
+  [Id("50cc45eb-e595-57be-acb2-cd0e37cc1976"), MaxLength(100)] string Name;
+  /// Order among siblings.
+  [Id("9a4dbe69-5d53-5097-808c-07601889e1dc")] int Ordinal;
+  /// UiTokenCategory: Color | Space | Radius | FontFamily | FontSize | FontWeight | Shadow | Motion | ZIndex | Breakpoint | Series | Group | Other.
+  [Id("2329b0f3-076b-5f81-9e91-b2f4efbe4433")] int Category;
+  /// The owning theme.
+  [Id("94245610-f18f-5c00-b3b4-394dd9266ee4"), Required] UiTheme Theme;
+  /// The token's value (Purpose=UiValue); null for a group node or a multi-mode token.
+  [Id("aa8f84a5-833f-5139-8ea6-49837d18da27")] ExpressionRoot ValueExpr;
+  /// The enclosing group/token; null at a top-level group.
+  [Id("336b6f12-0118-56f1-be40-4743187ccf6a")] UiToken Parent;
+  [Id("28ec8231-e7a4-40f8-b152-75111f534d98"), ForeignKey(Parent)] UiToken[] Children;
+  [Id("58c8332c-075e-4911-affa-a5bf7c99e5fa"), ForeignKey(Token)] UiTokenModeValue[] ModeValues;
+}
+
+/// A value within a variant dimension: an enum member's style block (`Primary { }`), or `base`'s shared block, optionally for a pseudo-state (hover/active/focus/disabled) or a breakpoint (declarative -> CSS).
+[Id("2251971a-2708-5a67-b415-e08e66cd8d92")]
+sealed entity UiVariantValue {
+  /// A breakpoint token for a responsive override; null = all widths.
+  [Id("811e12db-0a64-5c59-a107-e9af9b472381")] UiToken Breakpoint;
+  /// The matched enum member (Primary, Sm); null for the base block.
+  [Id("2661170a-c48d-50c8-bc86-a4f2b60bc86a")] EnumValue RefEnumValue;
+  /// The state's member NAME when it is not an enum member row — a BOOL dimension's single "True" state (S11/R7).
+  /// A dimension names its state either by RefEnumValue (an enum member) or by this; base uses neither.
+  [Id("ad74712b-2e55-42c1-a205-dd72a83c5774"), MaxLength(255)] string? MemberName;
+  /// UiVariantState: Default | Hover | Active | Focus | Disabled (a nested pseudo-state block).
+  [Id("e5ca75d4-a9d1-5feb-8fd4-ab13f6ad3d76")] int State;
+  /// An ANCESTOR component name (`inside Tab.Hover { }`) when this value is an ancestor-conditioned override; null for a
+  /// normal value. When set, `State` is the ANCESTOR's interaction pseudo, and the CSS generator emits a descendant
+  /// rule (`.osy-c-tab:hover .osy-c-<self> { }`). Stored by name (the class is name-derived; full-compile regenerates).
+  [Id("b4d9f2a7-8c31-5e6b-9a04-2f7c1e8d3b56")] string? AncestorComponent;
+  /// The owning dimension.
+  [Id("6896633f-7204-5c8c-b30e-89b968ddd84d"), Required] UiVariantDimension Dimension;
+  [Id("a1fb9f3b-e388-4370-b195-d76db15cf253"), ForeignKey(Value)] UiVariantStyleProp[] StyleProps;
+}
+
+/// A named-or-positional argument on a render node (`gap: 2`, `format: Currency`, or the positional `ProductCard(p)` / `Text(label)`). The value is an expression tree. Responsiveness is NOT here: a per-breakpoint value is a variant STYLE PROP (UiVariantValue.Breakpoint), lowered to a mobile-first `@media` rule in the app stylesheet.
+[Id("d3739b03-9f90-55bc-bd5f-b021421f5f4e")]
+sealed entity UiRenderProp {
+  /// The owning component (GC root + load-by-Component batch key, mirroring UiRenderNode.Component — the render path loads a component's whole prop set in ONE query, never per-node).
+  [Id("5a51dc93-0e61-4db8-b53b-1b9cd9492cd6"), Required] UiComponent Component;
+  /// The owning render node.
+  [Id("5047be12-a8e6-5104-9ebe-44728e469480"), Required] UiRenderNode RenderNode;
+  /// Positional / declaration order.
+  [Id("7d5b9f31-751e-517d-bcb5-5ca96406186c")] int Ordinal;
+  /// The argument value (Purpose=UiValue).
+  [Id("f72d709b-36ea-554d-9424-39e523015822")] ExpressionRoot Value;
+  /// The named-arg name (camelCase); null = a positional argument.
+  [Id("ad289eda-c506-5586-ab13-7d09ed5b761f"), MaxLength(100)] string? Name;
+}
+
+/// One entry of a routed component's `meta { }` SEO block (L5): title | description | canonical | jsonLd | og:* . An open set; the value is an expression tree.
+[Id("024dba44-678b-5dbb-bb40-7bef23c7ec80")]
+sealed entity UiMetaEntry {
+  /// The owning routed component.
+  [Id("3da0678b-a22e-529d-8d56-820152c6466a"), Required] UiComponent Component;
+  /// The value (Purpose=UiValue).
+  [Id("6b4f85e6-eeae-5813-9399-5aad096e1b97")] ExpressionRoot ValueExpr;
+  /// Declaration order.
+  [Id("6f2560ca-1773-55f5-a43e-6f901252ebe2")] int Ordinal;
+  /// The meta key (title, description, canonical, jsonLd, og:image, ...).
+  [Id("9793fe3d-2e32-57c2-a5bd-0ab35a449e8d"), MaxLength(100)] string Name;
+}
+
+/// A UI unit (D-UI). One archetype for all UI: a `component` (props/state/derived/data/effect/action/render) OR a `store` (the same, minus render — shared scoped state). A page is a component bound to a route; the app shell, a list row, a dialog are all components. Bodyless when an interop island or a config record. Every expression it owns lives in the universal ExpressionRoot tree (no UI-specific expression store).
+[Id("d0f4f40a-37e8-5479-aa78-4403e266f0c0")]
+sealed entity UiComponent {
+  /// [ReactComponent(pkg, export)]: the npm package of a headless-React interop island (L8); null otherwise.
+  [Id("07f5cd7b-2ea3-54c9-b1d1-892f4727dbb0"), MaxLength(200)] string? ReactPackage;
+  [Id("16b390ec-1402-43f7-a8c1-7173f490446f"), ForeignKey(Component)] UiComponentMember[] Members;
+  /// [Island]: a hydrated interactive island inside otherwise-static HTML (L5).
+  [Id("0f020a33-f03d-56d4-a5fb-f7f0174c2c43")] bool IsIsland;
+  /// UiUnitKind: Component | Store.
+  [Id("d5aeb0dc-9988-5739-93b8-182d8f1d269a")] int UnitKind;
+  /// The render tree's top node; null for a store or a bodyless (interop/config) component.
+  [Id("c32530f8-530f-58e7-bcae-bb01ad4d1423")] UiRenderNode RenderRoot;
+  /// The `skeleton { }` tree's top node (D193) — what this component looks like while its FIRST data read is in flight; null when it declares none. Its nodes are ordinary UiRenderNode rows carrying the same Component FK as the render tree's, so the two are told apart by which ROOT reaches them, not by a second table.
+  [Id("e24fa687-c26e-491b-bd9a-ceff8869c703")] UiRenderNode SkeletonRoot;
+  /// UiStoreScope: None (a component) | App | Session | ComponentProvided (a store's lifetime).
+  [Id("15bd84a4-b9e2-5361-8709-688a01834103")] int StoreScope;
+  /// ISR: the entity whose change regenerates this page ([Regenerate(on: X)]); null otherwise.
+  [Id("51e5e5c4-f3d8-5be8-8b7e-1d07ddcd0d43")] EntityMetadata RegenerateOn;
+  /// [ReactComponent(pkg, export)]: the exported React component name.
+  [Id("76769498-075c-5772-87fb-d315b1516a0a"), MaxLength(200)] string? ReactExport;
+  /// An optional named security policy gating the route ([Authorize(PolicyName)]): a COMPILE-CHECKED FK to the
+  /// reusable NamedPolicy artifact, not a free string — the authenticated principal must satisfy its predicate.
+  [Id("e58ff156-440a-551e-a52a-f6bd72cd22ed")] NamedPolicy AuthorizePolicy;
+  /// SECURITY-INVARIANT(ui-authorize-failclosed): the policy NAME an [Authorize(PolicyName)] page requires, stored
+  /// as a string INDEPENDENTLY of the AuthorizePolicy FK. The /ui gate reads THIS to know a policy was demanded, so
+  /// it fails CLOSED (forbid) when the NamedPolicy row can't be resolved — a null FK alone would make the gate skip
+  /// the check and serve the page to any authenticated caller (fail OPEN). Set whenever [Authorize(name)] is present;
+  /// the emitter ALSO hard-errors the compile if the row can't be materialized, so the two never disagree at build.
+  [Id("d749e8c4-bc78-42ae-baf5-b9fa5043a927"), MaxLength(200)] string? AuthorizePolicyName;
+  /// The route template from the page attribute, e.g. /p/{slug}; null = an unrouted component.
+  [Id("77fcc591-6104-5d30-9bd4-ffc999c3f0f8"), MaxLength(200)] string? Route;
+  /// `slots from <prop>.<member>` (M127) — the prop that carries this component's templated-slot names; null when it declares none. The exact pair UiControl already carries, because a component and a control answer "where do my slot names come from" with the same declaration and must not drift.
+  /// It was parsed, resolved and NEVER persisted until 2026-08-13: the clause is read at compile time to check a call site's `slot X { … }` fills, so a full-app export regenerated the component WITHOUT it and every call site's slot-name checking silently stopped working after a round trip.
+  [Id("fea00b20-ebf4-4532-8f16-75eece23e3e8"), MaxLength(100)] string? SlotSourceProp;
+  /// The member of that prop's element type that spells each slot name; null when there is no `slots from` clause.
+  [Id("31a89f2e-43d4-4754-9d99-db98008e0ee2"), MaxLength(100)] string? SlotSourceMember;
+  [Id("2b450df7-6098-4cbd-a8e1-124e6150743e"), ForeignKey(Component)] UiComponentTypeParam[] TypeParams;
+  /// A base/marker type for subtype-routed children (`component Line(...) : Mark`); null otherwise.
+  [Id("79ace5b8-1d2a-54d2-ba1a-f2c1c816acf7")] UiComponent BaseComponent;
+  [Id("32f4dd76-a34e-4aec-a512-865db53a9296"), ForeignKey(Component)] UiMetaEntry[] MetaEntries;
+  /// UiRenderMode: None | SSR | SSG | ISR | CSR (the [Render(..)] attribute).
+  [Id("a462f092-9252-5235-b550-a542003c0b05")] int RenderMode;
+  /// The component / store name (PascalCase).
+  [Id("38018d3d-91ea-57a5-bd1f-49d13f26c942"), MaxLength(200)] string Name;
+  /// Secure by default: a routed component requires an authenticated principal UNLESS marked [AllowAnonymous].
+  /// This flag is the explicit, compiler-visible public opt-out — true = the page is public (viewable by an
+  /// anonymous caller). Default false = protected, so a page can never leak by a forgotten attribute.
+  [Id("0444dd91-1a1b-45eb-9ce3-a777930e05dc")] bool AllowAnonymous;
+  /// Composition-only presentational component (owner D10, model-review M17): it carries NO auth identity and
+  /// INHERITS its render surface from whoever composes it. AllowAnonymous gates ENTRY POINTS (routed pages +
+  /// directly /ui-fetchable trees); [Composable] lets a library component render inside a public page WITHOUT its
+  /// own AllowAnonymous — its composed closure rides BUNDLED with the parent, so the anonymous client never fetches
+  /// it separately (no per-child 403). The DATA path never inherits: every query still gates on the queried entity.
+  /// Default false.
+  [Id("c0a9b1e2-3d4c-4f5a-9e6b-7c8d9e0f1a2b")] bool Composable;
+  /// [Title("Users")]: the page's human-readable name, for chrome that names a route (a retained-route strip, a
+  /// breadcrumb, the browser tab) — NOT a routing concern. Null = the app names the route itself, or doesn't.
+  /// This is the natural home for the localization catalog to key off (osyrin-ui-style §7): a label is a rendering
+  /// decision, so it never lives on the data's shape metadata.
+  [Id("1fe1d0d4-d09f-497d-b490-2dbc57623db7"), MaxLength(200)] string? Title;
+  /// [Layout] (D23 Phase 2): this component is a LAYOUT — it wraps child routes and renders the matched one at its
+  /// `Outlet;`. The router mounts it ONCE and swaps only the outlet's child across navigations, so its chrome
+  /// (sidebar, tab bar) and any state it holds survive. Default false.
+  [Id("89d4ae26-d3a4-49c0-b24f-4424edb4077e")] bool IsLayout;
+  /// [Layout(AppShell)] (D23 Phase 2): the layout this routed page renders INSIDE (at that layout's `Outlet;`). A
+  /// COMPILE-CHECKED identifier resolved to an FK, never a free string — the resolver verifies it names a declared
+  /// [Layout] component. Null = the page renders bare (a login page wants no shell). NESTED layouts are not supported
+  /// yet: a [Layout] declaring its own [Layout(...)] is a compile error, not a silent single-level render.
+  [Id("da7eaf7f-a3df-4286-84ad-0719826142bb")] UiComponent Layout;
+  [Id("db39ed39-79a3-4360-b3bc-d5c2cbdb17cb"), ForeignKey(Component)] UiRenderNode[] RenderNodes;
+  [Id("683f6a4f-0f10-47c0-b462-ab0a527e707c"), ForeignKey(Component)] UiComponentParam[] Params;
+  [Id("43f3d389-219d-47b7-abac-d6a63c1105e4"), ForeignKey(Component)] UiVariantRecipe[] Variants;
+  /// The bare source-module filename this component/store was declared in (`ModuleName.osy`), stamped at compile so
+  /// the full-app export regenerates it into its own module file. Mirrors EntityMetadata.SourceFile; null when
+  /// compiled from a single anonymous source.
+  [Id("ccd80cf0-ee94-41cb-87ae-98b7f3ee6249")] string? SourceFile;
+}
+
+/// A reactive member of a component/store: state | derived | data | effect | action | method (L1/L2). Declarative members (state/derived/data) delegate their expression to the universal ExpressionRoot tree; imperative members (effect/action/method block bodies) carry a body seam (BodyExpr the statements-as-tree end state, or BodyFunction an interim synthesized function — exactly one).
+[Id("c30571bb-5ddb-5954-8129-17ea34610608")]
+sealed entity UiComponentMember {
+  /// The owning component/store.
+  [Id("0565ceef-77a7-5ec3-afb5-53573bc4d655"), Required] UiComponent Component;
+  /// Data: `page N` page size; 0 = unpaged.
+  [Id("9bb638dd-e54a-5f78-8f95-8dfc1796862b")] int PageSize;
+  /// Action/Effect/Method block body as a statement tree (Purpose=UiAction) — the end state. Mutually exclusive with BodyFunction.
+  [Id("ac5ac263-a20a-53db-9aef-b7013cc3b058")] ExpressionRoot BodyExpr;
+  /// State initializer | Derived expr | Method expression-body (Purpose=UiValue/Computed).
+  [Id("b2940946-de7b-5638-9bfe-6cdda5af824a")] ExpressionRoot ValueExpr;
+  /// Declaration order.
+  [Id("121b289a-2c0b-55e2-a9b1-0dd191701380")] int Ordinal;
+  /// Data: the reactive LINQ query tree (Purpose=Query).
+  [Id("50b30188-30a7-5dfa-8f64-31f8a2f3a617")] ExpressionRoot Query;
+  /// Action/Effect/Method body as an interim synthesized function (like a workflow handler). Mutually exclusive with BodyExpr.
+  [Id("63ac172a-7674-5f56-8b8d-b95d6c2d0b57")] Function BodyFunction;
+  /// UiMemberKind: State | Derived | Query | Effect | Action | Method | Mount | Unmount | Stream | Settled | Frame | Every.
+  [Id("dc9439df-9f9c-5650-b7e2-cd48149163ab")] int MemberKind;
+  /// Every: the CADENCE of `on every (TimeSpan) { … }`, as an expression — re-read each tick, so a computed interval
+  /// (a game's speed curve) needs no separate machinery. Its own column rather than a reuse of `ValueExpr` for the
+  /// reason `ObservesMember` gives below: a column that means two different things depending on MemberKind is the
+  /// overload `Tier Class` was deleted for.
+  [Id("fd406ad6-d446-40d5-a5bc-79f5b2d4e49d")] ExpressionRoot IntervalExpr;
+  /// The member name (camelCase).
+  [Id("5b48a229-7b30-5513-9535-b96283090c5e"), MaxLength(100)] string Name;
+  /// The member's value/result type (State value, Derived/Method return, Data element).
+  [Id("686c5efb-8a5a-5a25-a8fb-55c83f3fc0d0")] UiTypeRef ResultType;
+  /// Data: the `live` modifier — subscribes to the data-change channel (IChangeNotifier).
+  [Id("ef525676-dbeb-57fd-a141-e9a39eca78f3")] bool IsLive;
+  /// Query (M154): this member is a registered HANDLE, not a page-load read — the compiler minted it for an entity read written inside an IMPERATIVE BODY, and the body runs it when the user triggers it. Everything else about it is an ordinary served query: a rootId, its captured inputs, the same secured read. The one thing that must not happen is the fetch: a general read answered at page load answers a question from before the user acted, which is a silent wrong answer rather than a stale one. Never set on a member the author wrote — an author's `var`/`live var` IS the page-load decision, made explicitly.
+  [Id("3cd587fc-791b-44f8-9af0-56dcddde3f01")] bool Deferred;
+  [Id("720fc762-d323-4b0c-9a90-d464cf4000ce"), ForeignKey(Member)] UiActionParam[] Params;
+  /// Settled: which member this hook OBSERVES — the `x` of `on settled(x) { … }`. Its own column rather than a reuse
+  /// of `Name`, because a settle hook has no name of its own and `Name` would then mean two different things
+  /// depending on MemberKind — the same one-word-two-meanings overload that `Tier Class` was deleted for.
+  [Id("39431124-8bef-40b0-9666-3b32a95f27a3"), MaxLength(100)] string? ObservesMember;
+}
+
+/// A parameter of an `action`/`effect`/`method` member (`action Approve(Order o)`, `void Discard(OpenTab t)`).
+[Id("cb9b5f62-8a36-5739-b46e-ac9c20e5f736")]
+sealed entity UiActionParam {
+  /// The parameter's type.
+  [Id("91b65a20-3b55-5fcf-83cc-2d821acab100"), Required] UiTypeRef Type;
+  /// Positional order.
+  [Id("d7d23830-37f8-5b54-bd7d-f818145e02e0")] int Ordinal;
+  /// The owning member.
+  [Id("46079f2c-e011-53f8-acae-623d7f5f1bea"), Required] UiComponentMember Member;
+  /// The parameter name.
+  [Id("18773fa3-7eae-5b3f-a2a0-d9c51253a6ca"), MaxLength(100)] string Name;
+}
+
+/// An irreducible capability atom (Stack/Box/Text/Button/Image/Pressable/VirtualList/Chart) — the TS/native surface the self-hosted control library (L8b) bottoms out on. The typed FK target for UiRenderNode.ElementType, governable like StdlibMethod. Seeded from the renderer's atom surface in a later phase; empty in Phase 0.
+[Id("6589e88a-0a8c-5c20-ade4-f410b3036554")]
+sealed entity UiPrimitive {
+  /// UiPrimitiveCategory: Layout | Content | Control | Media.
+  [Id("ab78198c-e571-514e-93cd-51f8da4bd904")] int Category;
+  /// The primitive name (Stack, Box, Text, Pressable, VirtualList, ...).
+  [Id("c9000772-7974-577b-ba52-72045da17ed3"), MaxLength(100)] string Name;
+}
+
+/// A node in a component's render tree (the §S grammar stretch). Owned by its Component (GC root + batch-load key, like ExpressionNode.Root); Parent + Ordinal give the tree. Element/Text/control-flow (If/Foreach/Responsive) are node kinds — control flow is declarative in the tree (compiles to render/CSS, SSR-safe). Element values, conditions, text and foreach-sources delegate to the universal ExpressionRoot tree.
+[Id("683e5317-cbe9-56db-b391-e426883ca432")]
+sealed entity UiRenderNode {
+  /// A platform capability atom (Stack/Box/Text/Button) when NodeKind=Element — catalog FK.
+  [Id("3ae4be00-0a3e-5292-b0c3-3a649a9e588b")] UiPrimitive ElementType;
+  /// The else node of an if-chain (a Fragment of else children, or a nested If for `else if`); null = no else.
+  [Id("61ecb98a-c249-564f-a959-a1976d560e31")] UiRenderNode ElseBranch;
+  /// The parent node; null at the component's RenderRoot.
+  [Id("55bd9036-8ded-5fd7-aaaa-441a907d35a4")] UiRenderNode Parent;
+  /// An If/ElseIf condition (Purpose=UiValue).
+  [Id("bc339331-ef93-5650-a05f-63337b752f77")] ExpressionRoot Condition;
+  /// UiRenderNodeKind: Element | Text | If | ElseIf | Else | Foreach | Slot | ComponentRef | Fragment | SlotFill | Control | Outlet | Let.
+  [Id("16d15b6a-bafc-5bef-b118-52ede1a253df")] int NodeKind;
+  /// A Slot node's slot name, or the named-slot being filled on a ComponentRef.
+  [Id("67f92a2b-ec37-5862-9c50-aa552583f220"), MaxLength(100)] string? SlotName;
+  /// Outlet retention policy (D27): 0 = none — one child at a time, disposed on navigate (the DEFAULT; zero opinion,
+  /// the shape an e-commerce or marketing app wants). -1 = retain every visited route, mounted-but-hidden. N > 0 =
+  /// retain up to N, evicting the least-recently-active CLEAN route beyond that. The platform has no "tab" concept:
+  /// this is the mechanism; the app decides whether to present the retained routes as tabs, a back-stack, or nothing.
+  [Id("ca9d0ff2-0714-4628-9949-463898cfafed")] int Retain;
+  /// A Text node's (interpolated) value (Purpose=UiValue).
+  [Id("c2ec49b7-b3a9-5e4e-b736-495adcd4f935")] ExpressionRoot TextExpr;
+  /// The owning component (GC root + load-by-Component batch key).
+  [Id("6818497f-0d5c-5556-90d9-f9cddcf586a3"), Required] UiComponent Component;
+  /// A Foreach node's collection source (Purpose=Query/UiValue).
+  [Id("4861acd7-9462-516b-98a3-1f0d610c25f8")] ExpressionRoot ForeachSource;
+  /// A Foreach node's loop variable name.
+  [Id("738a393b-bad1-5d19-8403-aefd78113120"), MaxLength(100)] string ForeachVar;
+  /// A Let node's bound NAME (`var m = …;`). Held apart from ForeachVar because the two bind for different spans — a
+  /// loop var over its body, a let over its FOLLOWING SIBLINGS — and one column meaning either would make every reader
+  /// check NodeKind to know which.
+  [Id("f991af5c-6afd-5799-be59-5b53114ea5d1"), MaxLength(100)] string? LetVar;
+  /// A Let node's DECLARED type as written (`bool lapsed = …;`), or null when the author wrote `var`. Kept because
+  /// the declared type PINS the binding — `decimal total = 0;` is decimal, not int — so dropping it would make a
+  /// decompile mean something different from the source it came from.
+  [Id("81f73014-4f68-599f-8ec6-66cd81bb3260"), MaxLength(200)] string? LetType;
+  /// A Let node's initializer (Purpose=UiValue).
+  [Id("1456ce01-4b2d-508f-8a41-36245610028e")] ExpressionRoot LetValue;
+  /// A call to another (self-hosted) component when NodeKind=ComponentRef.
+  [Id("0df6d419-5b18-5204-b42e-e9353fbb66f6")] UiComponent ComponentRef;
+  /// A foreign control mount point when NodeKind=Control — the UiControl manifest whose package the client loads (P2e).
+  [Id("9416a376-a8e0-4594-8c13-0dbf309cb405")] UiControl ControlRef;
+  /// Order among sibling children (statement order in the render block).
+  [Id("c3ca19d8-88cc-50ec-ae74-7be2edec0f71")] int Ordinal;
+  /// A render-builder lambda's datum parameter (`VirtualList(data) { row => ... }`); null for a plain children block.
+  [Id("a776d971-a9c3-5840-a5aa-ca0331b8b6ba"), MaxLength(100)] string? BuilderVar;
+  /// A Slot node's DATUM — the value a component passes to the caller's per-item template (`Slot(o)`, M121), which
+  /// binds the caller's builder var for that one instantiation. Null for a plain `Slot` (project the caller's content
+  /// once, unchanged), which is what every slot was before templates existed. Purpose=UiValue.
+  [Id("cd98b775-0e04-490b-ab18-1e784195c0c5")] ExpressionRoot SlotDatum;
+  /// M127 — a Slot node's slot name as an EXPRESSION, for a name only known at render time: `Slot(col.Key, row)`
+  /// inside a `foreach (var col in columns)`. That is one named per-item template per column, which is what a grid
+  /// needs and what `slots from columns.Key` gave a foreign CONTROL — expressed in the component vocabulary, so a
+  /// data grid can be an ordinary Osy# component instead of a bundled shim.
+  ///
+  /// Distinct from <c>SlotName</c> rather than replacing it: a STATIC name round-trips as text and decompiles as the
+  /// literal that was written, and it is what the compile-time "this component has no slot named X" check reads. At
+  /// most one of the two is set. Purpose=UiValue.
+  [Id("3f1e2c84-6a5b-4d97-9c0e-71b8a4d2f6e3")] ExpressionRoot SlotNameExpr;
+  /// M303 — the element HANDLE a Slot claims for whatever its CALLER fills it with: `Slot(id: field)`. The component
+  /// declares the handle, points its own caption at it with `labelFor: field`, and the renderer puts the minted id on
+  /// the fill's root element — so a wrapper can NAME a control it does not render and never sees.
+  ///
+  /// Without it a form component is labelled for exactly one audience: people who can see the layout. `Field("Name")
+  /// { Input(value: draft.Name); }` renders a caption inside `Field`'s tree and an input from the CALLER's, and a
+  /// handle scoped to one component cannot join them — eleven of the 39 unnamed inputs found across the demos on
+  /// 2026-08-20 were this exact shape, each written by an author who believed they had labelled the field.
+  [Id("b7c4e91d-5a26-4f38-8e0b-2d7c1a9f4e63"), MaxLength(100)] string? SlotHandle;
+  [Id("3c9711fb-7c8e-49f6-a1f6-3f3790ad909a"), ForeignKey(Parent)] UiRenderNode[] Children;
+  [Id("6febd4db-40b0-4f1a-a062-b1625cb2253f"), ForeignKey(RenderNode)] UiRenderProp[] Props;
+}
+
+/// A generic type parameter of a component (`Table<T>`, `Col<T, V>`). Flows parent->child through the render tree so accessor lambdas infer their row type (§S).
+[Id("8243818f-5e21-5213-b6bf-a03c9e61d800")]
+sealed entity UiComponentTypeParam {
+  /// The type-parameter name (T, V).
+  [Id("84f8dcbd-0499-5be3-85cd-49f0b3368d59"), MaxLength(100)] string Name;
+  /// The declared `where T : <kind>` constraint, or null when the parameter is unconstrained. A KIND ("enum"), not a type reference: `enum` names a category of types, and there is no single type to point a FK at. It replaced a `UiTypeRef Constraint` that was never written or read — only deleted in cleanup — i.e. a shape modelled for a feature that never landed.
+  [Id("633da8f4-2df9-51eb-a3db-2b83bf615438"), MaxLength(32)] string ConstraintKind;
+  /// The owning component.
+  [Id("bc5d4db8-4e71-566b-b83c-b4e97c7d5de9"), Required] UiComponent Component;
+  /// Declaration order.
+  [Id("42e224df-9fc9-56bd-97ca-7320edff0a5f")] int Ordinal;
+}
+
+/// A theme (L6): a named set of design tokens. Tokens are the only styling primitive; style props reference them by name. Scope = where it applies (app / a section / a component), so a subtree can be re-skinned without forking.
+[Id("2fb1adda-a7cd-5e4e-9d6a-91aa05d5f44f")]
+sealed entity UiTheme {
+  /// The theme name (PascalCase).
+  [Id("9bf5d602-e265-523c-ae14-727c314e5b0b"), MaxLength(200)] string Name;
+  /// UiThemeScope: App | Section | Component.
+  [Id("7b8c0c72-6605-51ee-9ed5-55dd9dbcb888")] int Scope;
+  [Id("b139a65f-944c-4f33-8fa7-c8b6b6f55d58"), ForeignKey(Theme)] UiToken[] Tokens;
+  /// The bare source-module filename this theme was declared in (`ModuleName.osy`), stamped at compile so the
+  /// full-app export regenerates it into its own module file. Mirrors EntityMetadata.SourceFile.
+  [Id("9f91f199-49e9-4d9b-a265-a64f94245dd7")] string? SourceFile;
+  /// The mode this app DEFAULTS to (`Light` / `Dark`), from `theme X { Mode = Dark; }`; null = follow the device. Without it a token's mode map is read off `prefers-color-scheme`, which is a fact about the VIEWER — so an app whose own palette is unconditionally dark still got the kit's LIGHT surfaces on a light-mode browser, and had no way to say otherwise. A `data-theme` attribute still wins over this: it pins the DEFAULT, it does not forbid the other mode.
+  [Id("f9bad357-2980-4916-8215-cdfafcd682f7"), MaxLength(50)] string? Mode;
+}
+
+/// An app-global `animation Name { … }` (D192) — motion with NO destination state (a shimmer, indeterminate progress, a pulse, an attention highlight that decays). A transition covers every A→B state change; this covers what a transition structurally cannot, because the change is an EVENT rather than a state. Lowers to one `@keyframes` rule in the app stylesheet; a use site is a single `Animation = <name>` reference, because the TIMING lives here rather than at the call.
+[Id("0a8a2713-ab3b-4af7-8182-3ccc83c14951")]
+sealed entity UiAnimation {
+  /// The animation name (PascalCase) — also what the `@keyframes` rule is named after.
+  [Id("086aa71f-2474-4485-962e-0abc3c34a194"), MaxLength(200)] string Name;
+  /// The lowered CSS duration (`1.5s`, `600ms`); null = CSS's own default. A time is a STRING, like a Transition's value — neither the Space nor the Length scale means anything for it.
+  [Id("cf889bab-7082-403d-b53e-24932ae9f680"), MaxLength(50)] string? Duration;
+  /// The lowered CSS timing function (`ease-in-out`) from the closed Easing keyword set; null = CSS's default. NOT a Motion token: a Motion token is a whole transition shorthand, so it carries a property and a duration too.
+  [Id("097412e8-1977-4bec-9fae-7f5e56dd9a5b"), MaxLength(50)] string? Easing;
+  /// The lowered CSS iteration count (`infinite`, `3`); null = CSS's default of 1.
+  [Id("4f5316e6-a76e-477d-9ed4-c746060d3957"), MaxLength(50)] string? Repeat;
+  /// The bare source-module filename this animation was declared in, stamped at compile (mirrors UiTheme.SourceFile).
+  [Id("5571c273-4875-4b77-a73c-30ed67459274")] string? SourceFile;
+  [Id("add5713e-6e81-4a6d-a35c-0c63943c12dc"), ForeignKey(Animation)] UiAnimationStop[] Stops;
+}
+
+/// One keyframe stop of a UiAnimation — a percentage through the run mapped to a set of style props. Structurally a variant VALUE (UiVariantValue): the body is the same closed style-prop vocabulary, which is what makes stops typed and theme-aware without a second value language.
+[Id("b5061af9-42e1-4882-8819-36503ba64cfa")]
+sealed entity UiAnimationStop {
+  /// The owning animation.
+  [Id("e115561d-41ff-4cee-a3c7-aaaef0e0a1c4"), Required] UiAnimation Animation;
+  /// Where in the run this stop applies, 0-100. `from`/`to` are stored as 0 / 100.
+  [Id("dccbec4f-1db2-4040-8b5f-d736e462f708")] decimal Percent;
+  /// Declaration order.
+  [Id("bbe2b446-3d36-47f2-9f16-2372d9b12e4a")] int Ordinal;
+  [Id("94eac2f9-438a-46b9-a90a-bb12387f6dab"), ForeignKey(Stop)] UiAnimationStyleProp[] StyleProps;
+}
+
+/// A single style property in a keyframe stop's block (`Opacity = 0.4`, `TranslateX = "-100%"`). The value is an expression (token-ref or scalar) so token references stay truth-in-metadata — the same currency as a variant's style prop, and the same lowering.
+[Id("20150c48-11d2-469d-be1d-e4b37ed72613")]
+sealed entity UiAnimationStyleProp {
+  /// The owning keyframe stop.
+  [Id("a66c7ddb-e258-4217-b512-ab561ad5a295"), Required] UiAnimationStop Stop;
+  /// The style-prop name (PascalCase: Opacity, Bg, TranslateX, Rotate).
+  [Id("5ddd08bb-e54c-4e53-ac5d-e457f6fe593d"), MaxLength(100)] string Name;
+  /// The token-ref/scalar value (Purpose=UiValue).
+  [Id("f995914d-7f0a-4ec8-b54f-c20a93764f1e")] ExpressionRoot ValueExpr;
+  /// Declaration order.
+  [Id("155131cc-7125-4b99-930a-aeade6bddac4")] int Ordinal;
+}
+
+/// A component parameter (a prop). Carries a UiTypeRef (scalar/entity/generic/delegate/accessor/Binding/Query/slot/child-collection/value-type/record). A typed Slot/Content param or a typed child-collection (`Col<T>[]`) is how a component receives children (the UiTypeRef.Kind says which form).
+[Id("021bb0ae-0e9f-5b27-aa34-5f33927a5bf8")]
+sealed entity UiComponentParam {
+  /// The parameter's type.
+  [Id("8abc5cc0-2541-563c-b8db-01b70ac0268d"), Required] UiTypeRef Type;
+  /// The default value (Purpose=UiValue); null = a required prop.
+  [Id("2bced71f-e308-5314-a97d-dff2b234a78a")] ExpressionRoot DefaultValue;
+  /// The owning component.
+  [Id("df7fb53f-3502-5224-9d0d-0a5d32b55c0a"), Required] UiComponent Component;
+  /// The prop name (camelCase).
+  [Id("8d94167f-39f8-5bb9-b3bb-b839eaa01bee"), MaxLength(100)] string Name;
+  /// Declaration / positional order.
+  [Id("38f17506-6271-57f9-bad7-83e1fd33bf19")] int Ordinal;
+}
+
+/// A per-mode value of a token (`Surface = { Light = ..., Dark = ... }`) — L6 dark-mode / theme modes, resolved server-side per request so the first paint is correct (no flash). Mode is an open string (Light/Dark/...).
+[Id("947b0ccf-b7db-54c0-8cd2-e12f6199fe03")]
+sealed entity UiTokenModeValue {
+  /// The owning token.
+  [Id("f399be37-c65c-582e-a2b4-458d94673b41"), Required] UiToken Token;
+  /// The token's value in this mode (Purpose=UiValue).
+  [Id("823303ba-52b4-56c2-bdd4-3225960209a2")] ExpressionRoot ValueExpr;
+  /// The mode name (Light, Dark, ...).
+  [Id("c6366ac6-6df8-5b5e-863e-4772f36916da"), MaxLength(50)] string Mode;
+}
+
+/// A dimension of a variant recipe: `base` (always applied) or a per-variant-prop block (the prop name) whose values are that prop's enum members.
+[Id("7a67e147-ecf2-59d8-895c-c1a26ae97c2e")]
+sealed entity UiVariantDimension {
+  /// Order among dimensions.
+  [Id("0c2c1b80-7977-51c0-b962-0eeaa81b3056")] int Ordinal;
+  /// The enum-typed component prop this dimension matches; null for `base`.
+  [Id("ef735e69-302f-5123-be9f-e47b21c79d6d")] UiComponentParam Param;
+  /// The owning recipe.
+  [Id("4d903fce-4da5-5a42-a7c1-9052bc01beec"), Required] UiVariantRecipe Recipe;
+  [Id("3a74de4a-1143-45c1-b9d4-3b8a86c13f76"), ForeignKey(Dimension)] UiVariantValue[] Values;
+  /// `base`, or the variant-prop name (tone, size).
+  [Id("15e64f83-a2c3-5b6a-958b-203b05fe6233"), MaxLength(100)] string Name;
+}
+
+/// A component's token-styled variant recipe (`variants { base { } tone { Primary { } } }`, L6/§S) — compiles to static CSS at build time (SSR-safe, zero-runtime). One recipe per component; applies to the render root.
+[Id("4633755f-098b-55ad-a88d-ce0ae74670f1")]
+sealed entity UiVariantRecipe {
+  /// The owning component.
+  [Id("8d0aa59b-87ff-5bda-93ac-9fb2cf955021"), Required] UiComponent Component;
+  [Id("d81675de-481e-49a8-921d-ee6f2638dfa5"), ForeignKey(Recipe)] UiVariantDimension[] Dimensions;
+}
+
+/// A foreign-control MANIFEST (L8, foreign_control_abi_contract.md) — the compiled surface a `control` block lowers to. The platform ships ZERO controls; each is 100% app-owned. The impl is an out-of-band bundled asset (linked by package + hash at deploy, D13); this row + its children are what the compiler's call-site checks + the client loader read. Shape types (Series/Point) are ordinary classes.
+[Id("990baf52-388a-4ac0-b7d6-2423d22c8517")]
+sealed entity UiControl {
+  /// The control name (PascalCase) — the render-site reference.
+  [Id("0674207a-346f-4331-99fa-625440ec8e21"), MaxLength(200)] string Name;
+  /// The adapter ABI version this control targets (contractVersion).
+  [Id("8aa67706-d037-40f9-a2ca-3af3e1a2734d"), MaxLength(50)] string ContractVersion;
+  /// The control's OWN semver (its prop/event schema).
+  [Id("1ff0c93e-d19d-4e9b-9205-0363526463d0"), MaxLength(50)] string Version;
+  /// UiControlParticipation: None | Headless | Hookable | Opaque (the token-participation rung).
+  [Id("7f5f8e42-7735-430d-abbf-bbf7d8e5a699")] int Participation;
+  /// The content address (lowercase SHA-256 hex) of this control's bundled JS PACKAGE (D13, P2d) — the client loader fetches `/_osy/control/{PackageHash}`. Set from the compile request's control→hash map (from osyrin.lock); "" when no package is linked yet.
+  [Id("509fd0d0-7955-4a36-9282-02518a9ed668"), MaxLength(64)] string PackageHash;
+  /// The bare source-module filename this control block was declared in — lets the full-app export regenerate the `control` declaration back into its own module file (D2).
+  [Id("b8b74060-6adb-49c1-b81c-1c44923964dc"), MaxLength(255)] string? SourceFile;
+  /// `slots from <prop>.<member>` — the prop that carries the templated-slot names (null when the control declares none).
+  [Id("92ddbce5-a25b-4d79-8b73-179089542328"), MaxLength(100)] string? SlotSourceProp;
+  /// The member of that prop's element type that spells each slot name; null when there is no `slots from` clause.
+  [Id("e615f82d-4bb9-4432-8cf8-32d18cd10cf2"), MaxLength(100)] string? SlotSourceMember;
+  [Id("a1193708-254b-47eb-8276-ebf19b226e8f"), ForeignKey(Control)] UiControlProp[] Props;
+  [Id("b1991f28-1529-46a7-9eb8-d37fa3ce8db5"), ForeignKey(Control)] UiControlEvent[] Events;
+  /// The control's own declared style knobs (M53). Empty for a control that declares no `styles { }` block, which is every control that existed before the rung.
+  [Id("7f2c9d41-5a68-4e3b-9c07-1b4d8e6a2f93"), ForeignKey(Control)] UiControlStyle[] Styles;
+  /// The verbs this control accepts (M53). Empty for a control that declares no `commands { }` block.
+  [Id("3c8e1a75-9d24-4f60-b8e3-51a7c2064d19"), ForeignKey(Control)] UiControlCommand[] Commands;
+  [Id("c7a1e2f0-1b3d-4c5e-8f90-a1b2c3d4e504"), ForeignKey(Control)] UiControlTypeParam[] TypeParams;
+  /// The extra assets this control loads on demand (P5 / M79). Empty for a control that declares no `chunks { }` block, which is every control that existed before the rung.
+  [Id("aae39a8c-1fbf-470f-bddb-8c2d49d52c37"), ForeignKey(Control)] UiControlChunk[] Chunks;
+  /// What this control publishes about its OWN state, for a test to ask (M199). Empty for a control that declares no `probe { }` block, which is every control that existed before the rung.
+  [Id("9893c0c3-0a2e-4ca9-808c-7271f28eb587"), ForeignKey(Control)] UiControlProbeField[] Probe;
+}
+
+/// A generic type parameter of a foreign control (`control DataGrid<T>`, D19) — mirrors UiComponentTypeParam. The app binds T at the call site (inferred from the collection arg), so a `T[] rows` / `rowSelected(T row)` type-checks against the app's own entity while the control declaration stays app-independent. Names only (unconstrained, like the parser).
+[Id("c7a1e2f0-1b3d-4c5e-8f90-a1b2c3d4e5f6")]
+sealed entity UiControlTypeParam {
+  /// The owning control.
+  [Id("c7a1e2f0-1b3d-4c5e-8f90-a1b2c3d4e501"), Required] UiControl Control;
+  /// The type-parameter name (T, V).
+  [Id("c7a1e2f0-1b3d-4c5e-8f90-a1b2c3d4e502"), MaxLength(100)] string Name;
+  /// Declaration order.
+  [Id("c7a1e2f0-1b3d-4c5e-8f90-a1b2c3d4e503")] int Ordinal;
+}
+
+/// A declared prop on a control (`[Values(line,bar)] string kind = "line";`). The type is the control's OWN shape or a scalar (never an app type). ValuesCsv = the `[Values(...)]` closed set (comma-joined identifiers; "" = none). HasDefault marks the prop optional (the default value itself is a later slice, mirroring UiComponentParam.DefaultValue).
+[Id("a6386ee6-a74c-4496-8c7b-c0a57283c23b")]
+sealed entity UiControlProp {
+  /// The owning control.
+  [Id("7e649a91-b06a-4fa4-8fe4-ea3e762051ef"), Required] UiControl Control;
+  /// The prop name (camelCase).
+  [Id("e4d2c488-bbde-4cbf-9945-4fa7eb78962b"), MaxLength(100)] string Name;
+  /// The declared type SPELLING (e.g. `Series[]`, `string?`, `int`) — carries array/nullable so it round-trips exactly.
+  [Id("1d04b980-1720-4f81-a378-cee8b3dfefe3"), MaxLength(200)] string PropType;
+  /// True if the prop declared a default (`= …`) → optional; false → required.
+  [Id("4798cb35-2d4b-43fa-92e4-27c8c65d21ae")] bool HasDefault;
+  /// The default VALUE expression as canonical Osy# text (`"line"`, `[]`, `100`) — null when the prop has no default.
+  [Id("c405b9a3-e7e1-4784-a39e-ee2ba9c187db"), MaxLength(1000)] string? DefaultExpr;
+  /// Declaration order.
+  [Id("9635bc3d-5aa8-4171-8037-641ba8b5d9fe")] int Ordinal;
+  /// The `[Values(...)]` closed set, comma-joined (identifiers can't contain commas → lossless); "" = unconstrained.
+  [Id("1a13e645-a431-4444-8b26-d88ff3c16af2"), MaxLength(500)] string ValuesCsv;
+}
+
+/// A declared event-out on a control (`pointSelected(int index);`) — a handler binding at the call site is checked against these params (the routed action re-checks server-side).
+[Id("111df6ca-b3fb-4b70-82d2-5ffebf3dfff8")]
+sealed entity UiControlEvent {
+  /// The owning control.
+  [Id("9ff31b4a-3d20-405b-937c-1a96ec5ee9de"), Required] UiControl Control;
+  /// The event name (camelCase).
+  [Id("6e87bda5-20f5-4797-82cf-25d3eb7630ed"), MaxLength(100)] string Name;
+  /// Declaration order.
+  [Id("129308c4-7c6e-4ec0-9194-7dcfe435311d")] int Ordinal;
+  [Id("b93fd673-4993-468b-805b-81ebd3f0774a"), ForeignKey(Event)] UiControlEventParam[] Params;
+}
+
+/// A declared COMMAND on a control (`ExportCsv(string filename);`, M53) — a verb the control accepts, the mirror of an event. An event is the control telling the app something happened; a command is the app asking the control to do something. Stored so the client knows what the shim MUST implement: the handle a control returns is checked against these at mount, which turns "declared a verb and never wrote it" into a loud failure at the mount that produced it rather than a dead menu item a user finds. Emitted from source like the events beside it.
+[Id("016b0c89-3021-4447-8e9a-288781e7a898")]
+sealed entity UiControlCommand {
+  /// The owning control.
+  [Id("8695a4a2-8bd1-4dae-a519-698fda19351e"), Required] UiControl Control;
+  /// The command name as DECLARED (PascalCase). The shim implements it camelCase; the platform maps between them so neither side spells the other's convention.
+  [Id("d7cf7c6d-42dc-46b7-abc7-7a70180a5957"), MaxLength(100)] string Name;
+  /// Declaration order.
+  [Id("74a505a1-f001-437f-b64e-6caa6f61a780")] int Ordinal;
+  [Id("804b696f-9c8d-4805-8437-2405fc181ddc"), ForeignKey(Command)] UiControlCommandParam[] Params;
+}
+
+/// One CHROME slot a control declares (`slots { FindBar; }`, M55) — a named region of the control's own interface that an app fills with its own Osy#. Distinct from `slots from <prop>.<member>`, whose names come one per ITEM of a prop's value and are therefore only knowable at a call site; these are fixed by the declaration. The template's datum is the control's COMMAND BAG, which is what lets an app write the chrome while the control keeps the behaviour behind it. Emitted from source like the commands beside it, so a recompile that drops the `slots { }` block drops these rows.
+[Id("19f65455-25c5-4cc1-be93-f934bfeca321")]
+sealed entity UiControlSlot {
+  /// The owning control.
+  [Id("bd6ac099-3c5c-4ae5-9129-5514b9180641"), Required] UiControl Control;
+  /// The slot's name, as an app spells it in a `slot <Name> { … }` fill and the shim reads it from its host.
+  [Id("a9ac039d-bcf6-49c0-a455-43d3faa08808"), MaxLength(100)] string Name;
+  /// Declaration order.
+  [Id("5ef0e42c-d1c1-4fba-8634-2d3e7be20049")] int Ordinal;
+}
+
+/// One PROBE FIELD a control declares (`probe { bool dirty; }`, M199) — a fact about the control's OWN internal state that it publishes so a test can ask for it. The fourth direction across the ABI and the only one that is not for the app: props go in, events come out, commands go in, and none of them answers *is the document dirty*, *how many matches did the search find*. Those reach the screen, if at all, as PIXELS — so a test could only assert them by reading rendered text, which measures the control's STYLING rather than its behaviour and is not available at all to a control that paints into a canvas.
+/// Stored so the client knows what the shim MUST answer with: the object a control's `probe()` returns is checked against these at mount, exactly as its command bag is — which turns "declared a field and never reported it" into a loud failure at the mount that produced it rather than an assertion that refuses much later, in a test, naming the wrong thing. Emitted from source like the commands beside it, so a recompile that drops the `probe { }` block drops these rows.
+[Id("6515bd0f-47cb-41a3-a8c6-2856c1b81266")]
+sealed entity UiControlProbeField {
+  /// The owning control.
+  [Id("0fb244b0-5168-4316-b7ec-d53fda184b51"), Required] UiControl Control;
+  /// The field's name, as the shim spells it in the object its `probe()` returns and as a test names it in `Assert.Probe(control, field, expected)`.
+  [Id("1f485176-ca27-4975-81f3-d75cdcf9f414"), MaxLength(100)] string Name;
+  /// The declared type SPELLING (`bool`, `int`, `string?`) — a comparable scalar, since an assertion compares one value against one expected value. Carries nullability so it round-trips exactly.
+  [Id("d8389698-e21d-4359-a0e4-f380367d1f80"), MaxLength(200)] string FieldType;
+  /// Declaration order.
+  [Id("76a597d7-d1e9-4dc2-a407-7aba557073bb")] int Ordinal;
+}
+
+/// One CHUNK a control declares (`chunks { Math; }`, P5 / M79) — an extra asset the control ships but does not need at mount, and loads on demand. Before this, a control was ONE asset with no second path, so a heavy optional feature (a maths renderer, a diagram engine) could only be bundled for every page that mounts the control or not shipped at all.
+/// Two halves, and they arrive from different places: the NAME + declaration order are emitted FROM SOURCE like the props and events beside it, and the `Hash` is stamped from the compile request's control→chunk→hash map (what `osy control add --chunk` pinned in `osyrin.lock`) — exactly as `UiControl.PackageHash` is. So a recompile that drops the `chunks { }` block drops these rows, and one that changes a chunk's file re-stamps its hash.
+/// The platform learns the name and nothing else: the shim asks `host.chunkUrl("Math")` and does its own `import()` (or injects its own `<link>`). A platform that returned a MODULE could not serve a stylesheet, and one that decided WHEN to load would be answering a question only the control can.
+[Id("b1ef08a1-114c-49de-8130-69fd126bf39f")]
+sealed entity UiControlChunk {
+  /// The owning control.
+  [Id("daf72de4-64d0-40c8-8bf6-250acf6fe2cd"), Required] UiControl Control;
+  /// The chunk's name, as the shim spells it in `host.chunkUrl("Math")` and as `osy control add --chunk Math=<file>` keys the file by.
+  [Id("c4e632d6-779e-4de5-95b3-5be5afd5c225"), MaxLength(100)] string Name;
+  /// The content address (lowercase SHA-256 hex) of the chunk's bytes — the client builds `/_osy/control/{Hash}` from it, the same endpoint that serves the main bundle, because a chunk IS a control package by another name. "" when nothing is pinned for the name yet, which the emitter refuses for a RENDERED control (a shim asking for that URL would 404).
+  /// For a PACKAGE chunk (M89) this is the content address of its MANIFEST instead, and the member files are served under it — see EntryPath.
+  [Id("725cac67-9aae-43e1-baec-830942c79335"), MaxLength(64)] string Hash;
+  /// The chunk's ENTRY, relative to its package root (`mermaid.esm.min.js`) — null for a chunk that is ONE file, which is every chunk that existed before M89.
+  /// Its presence is what makes a chunk a PACKAGE: `Hash` then addresses a manifest of relative path → member hash, the client builds `/_osy/control/pkg/{Hash}/{EntryPath}`, and the library's OWN relative imports, `new Worker(new URL('./w.js', import.meta.url))` and `.wasm` siblings resolve against that base the way the library already expects. A single-file chunk has no directory around its content address, which is why a relative specifier is refused in one and fine in the other.
+  /// Carried HERE rather than read from the manifest because the client must build the entry URL without first fetching anything — a manifest round trip before the `import()` would add a request to the path this whole mechanism exists to keep short.
+  [Id("f3d18c5b-6a49-4e72-9c1a-27b5e8d4a061"), MaxLength(400)] string? EntryPath;
+  /// Declaration order.
+  [Id("b89bcc27-9717-4e0c-9541-d48a54eaf884")] int Ordinal;
+}
+
+/// One typed parameter of a control command (`filename` of `ExportCsv(string filename)`).
+[Id("3874a5a0-ded2-477e-887b-417ebcbe275b")]
+sealed entity UiControlCommandParam {
+  /// The owning command.
+  [Id("ada526d1-c00f-464b-ad29-f697d9f2380e"), Required] UiControlCommand Command;
+  /// The param name.
+  [Id("268503ab-513a-4793-8151-b64c27f363a0"), MaxLength(100)] string Name;
+  /// The param's declared type spelling (e.g. `string`).
+  [Id("85b62ab6-ce7e-4fdc-9b2e-b13e4687e8e7"), MaxLength(200)] string ParamType;
+  /// Declaration order.
+  [Id("8aa960ac-73cf-43ea-b578-93d354d3a598")] int Ordinal;
+}
+
+/// One declared STYLE knob on a control (`length RowHeight = "2.25rem";`, M53) — a look value the control owns and an app may override. Distinct from a theme token: a theme is the APP's shared design language that every control reads, while these are ONE control's own surface, defined only by it. The control still inherits the app's look by default, because a default may reference a theme token. Emitted from source like the props and events beside it, so a recompile that drops the `styles { }` block drops these rows.
+[Id("40c9bca0-99f1-414b-bed4-218d239ac504")]
+sealed entity UiControlStyle {
+  /// The owning control.
+  [Id("1d9a858d-20ef-424b-8a78-e68fc094b1a1"), Required] UiControl Control;
+  /// The knob's name as the app spells it in an override and the shim reads it (`RowHeight`).
+  [Id("cc5bb035-04c2-434a-a5b7-93fc8d409c55"), MaxLength(100)] string Name;
+  /// The VALUE's kind — length | color | shadow | number | time | text. Not a CSS property: the platform never learns what the knob is FOR, only enough about its shape to check an override.
+  [Id("4ff0a4f3-b120-486b-884a-61afe0d00b01"), MaxLength(50)] string Kind;
+  /// The default, already lowered to the CSS value the control paints with when the app says nothing — a literal, or a `var(--…)` when the default referenced a theme token.
+  [Id("6c28fa89-b98f-4b03-be20-1e04590300a4"), MaxLength(500)] string DefaultValue;
+  /// Declaration order.
+  [Id("2838b68a-cf5c-4e9a-9afb-fc740f4fa81b")] int Ordinal;
+}
+
+/// One PER-CALL-SITE override of a control's own style knob (`DataGrid(rows: o, styles: new() { RowHeight = "3rem" })`, M53) — the tier a theme cannot express: two instances of one control, on one page, styled differently. Sits on the render node rather than on the control, because that is what "per call site" means. The value is already lowered to CSS (a literal, or a `var(--…)` when it referenced a theme token) and is STATIC by design: the client stamps it inline on the mount element, where it outranks both the app-wide theme override and the control's own default, and nothing re-stamps it.
+[Id("45e9682b-615b-452a-bfcd-32abd75d9e89")]
+sealed entity UiRenderControlStyle {
+  /// The owning component (GC root + load-by-Component batch key, exactly like UiRenderProp — the render path loads a component's whole set in ONE query, never per-node).
+  [Id("ec8cd501-d2a0-4e74-942b-7a526c90c1c6"), Required] UiComponent Component;
+  /// The Control render node this override was written on.
+  [Id("be059e25-46e8-4524-9ef2-670b8a84223e"), Required] UiRenderNode RenderNode;
+  /// The knob's name as the control declares it (`RowHeight`) — checked against that declaration at compile time.
+  [Id("a01ba156-4c9a-4dfe-9262-49d0a80ebb00"), MaxLength(100)] string Name;
+  /// The override, already lowered to the CSS value it paints with.
+  [Id("38d7f2ae-6e5d-43dd-8773-64609e3194f0"), MaxLength(500)] string Value;
+  /// Order written at the call site.
+  [Id("00e9c67d-d3be-405c-9a5e-b4e90c80d8c9")] int Ordinal;
+}
+
+/// One typed payload param of a control event (`index` of `pointSelected(int index)`).
+[Id("ffce31b3-d902-4713-9f23-cf4c66d61f18")]
+sealed entity UiControlEventParam {
+  /// The owning event.
+  [Id("34085d29-a3a4-413b-94fa-f578002bb372"), Required] UiControlEvent Event;
+  /// The param name.
+  [Id("b75f800e-82a4-4c1a-8bc4-cf59427507d3"), MaxLength(100)] string Name;
+  /// The param's declared type spelling (e.g. `int`).
+  [Id("dc3ea9fe-2f69-4ebd-9a4f-0b0cbae78e4a"), MaxLength(200)] string ParamType;
+  /// Declaration order.
+  [Id("0c604b5f-f5ef-47a9-82a2-6e08a899c3a9")] int Ordinal;
+}
+
+/// The app's compiled ICON SPRITE (D28) — at most ONE row per app. Icons are build-time chrome, never data: the compile collects the app's `.svg` files, sanitizes each (SECURITY-INVARIANT(ui-icon-sanitize)) and composes ONE deterministic, content-addressed sprite of `<symbol id="osy-icon-{name}">` elements. The page shell INLINES `Svg` (a same-document `<use>` is the only way `currentColor` reliably inherits, and it is what gives a server-painted shell its icons on the first byte); `/_osy/icons/{Hash}.svg` serves the same bytes immutably for a pure-CSR boot. EMITTED FROM SOURCE, so a recompile that removes every icon drops the row. Constraint-free like every Registry/Modules entity (the PMM self-bootstraps); one-row-per-app is enforced by the writing emitter.
+[Id("78ecd317-9dd7-41da-b8c0-3a62d75af123")]
+sealed entity UiIconSprite {
+  /// The content address — lowercase SHA-256 hex of the sprite's UTF-8 bytes. The `/_osy/icons/{Hash}.svg` URL segment + the immutable cache key (identical icons ⇒ identical hash ⇒ no cache bust on a no-op recompile).
+  [Id("cb2e215a-4dbf-4079-8b37-e52f84be1062"), MaxLength(64)] string Hash;
+  /// The sanitized sprite document, inlined verbatim into the shell. Never store an unsanitized SVG here.
+  [Id("ba78b999-e4ae-4de1-8cec-1e7d53f48ee5")] string Svg;
+  /// How many icons the sprite carries (diagnostics + the compile summary).
+  [Id("ce1704a1-75d8-465f-9035-37b6e634a2a3")] int IconCount;
+}
+
+/// The app's compiled raw-SVG ASSET set (D102) — at most ONE row per app, the illustration twin of UiIconSprite. Assets are build-time chrome (backgrounds, illustrations, multi-colour logos), never data: the compile collects the app's `art/*.svg` files, sanitizes each with colours/gradients/`<pattern>`s PRESERVED (SECURITY-INVARIANT(ui-svg-asset-sanitize)) and content-addresses the whole set. Unlike icons (single sprite, `<use>`-referenced), each asset is INLINED verbatim at its `Svg(name)` site, so this row carries the whole name→sanitized-svg map: the client fetches `/_osy/svg/{Hash}.json` once and the SSR renderer inlines by name. EMITTED FROM SOURCE, so a recompile that removes every asset drops the row. Constraint-free like every Registry/Modules entity (the PMM self-bootstraps); one-row-per-app is enforced by the writing emitter.
+[Id("ff84c69d-065e-4b97-b631-0677c7bb6781")]
+sealed entity UiSvgAsset {
+  /// The content address — lowercase SHA-256 hex of the whole set (all assets in name order). The `/_osy/svg/{Hash}.json` URL segment + the immutable cache key (identical assets ⇒ identical hash ⇒ no cache bust on a no-op recompile).
+  [Id("0db23c60-498f-426d-84f7-2612aa2903ce"), MaxLength(64)] string Hash;
+  /// The sanitized asset set as a JSON object: asset name → its sanitized `<svg>…</svg>` document. Never store an unsanitized SVG here. Served verbatim to the client and inlined by name by the SSR renderer.
+  [Id("d407fc62-0c19-4354-a7ad-cb7dd9059339")] string Assets;
+  /// How many assets the set carries (diagnostics + the compile summary).
+  [Id("5cce9016-5043-45f0-8e7a-85db4456b472")] int AssetCount;
+}
+
+/// The app's compiled RASTER assets (D232) — ONE ROW PER TEXTURE, the third asset kind beside UiIconSprite (glyphs, sprited into one document) and UiSvgAsset (vector, sanitized and inlined). A texture is opaque BYTES, so unlike those two it is not carried in this row: the bytes live in IFileAssetStore under StorageKey, exactly as a control package or a font file does, and this row is the per-app INDEX that says what the app has (the store offers no List).
+/// A row per texture rather than one row holding a map, because the unit of storage IS the texture: each has its own content address, its own blob, and its own cache lifetime. The whole SET's address — the immutable key the client fetches the name→texture map under — is DERIVED from these rows (name+hash pairs in name order, UiTextureAsset.SetHashOf) rather than stored, so it can never disagree with the rows it summarises.
+/// EMITTED FROM SOURCE, unlike UiControlAsset/UiFontAsset: a texture is declared by being a FILE under the app's `textures` glob, so a recompile that removes the file removes the row and, when nothing else references the content address, the blob. A texture that outlived its source would keep being served under a URL the app no longer knows about.
+/// The ContentType is the one SNIFFED from the bytes at compile time (SECURITY-INVARIANT(ui-texture-content-type)) and is returned VERBATIM by `/_osy/texture/{Hash}`, so it is never taken from a file extension or from anything the client sent. Constraint-free like every Registry/Modules entity (the PMM self-bootstraps); one-row-per-name is enforced by the writing emitter.
+[Id("765e2bef-c83b-4f7b-869d-7f55356e2756")]
+sealed entity UiTextureAsset {
+  /// The texture's name — the source file's stem, which is also exactly how it is drawn: `Draw.Image(wall, …)`. The app-unique key of this index.
+  [Id("1713fb99-289c-4c14-a3ca-912419b017f5"), MaxLength(100)] string Name;
+  /// The content address — lowercase SHA-256 hex of the image bytes. The `/_osy/texture/{Hash}` URL segment + the blob dedup key. NOT unique across rows: one file may legitimately be shipped under two names.
+  [Id("ae0626e2-cfe6-4702-a8a8-c7ab0673e36d"), MaxLength(64)] string Hash;
+  /// File size in bytes (drives the per-app total cap + GC accounting).
+  [Id("31eb1df3-8135-4542-aca3-ea055464e16a")] long Size;
+  /// The MIME type the serve endpoint returns, sniffed from the bytes (`image/png`, `image/jpeg`, `image/webp`).
+  [Id("92aed957-535a-4561-ab3d-2b42e4db2bb9"), MaxLength(100)] string ContentType;
+  /// The intrinsic width in pixels, read from the image header at compile time — so an app knows a texture's size without waiting for a decode, and an absurd claim is refused before anything decodes it.
+  [Id("6701634a-1170-411f-bcb5-37f2ff292b34")] int Width;
+  /// The intrinsic height in pixels, read from the image header at compile time.
+  [Id("744f568a-fcef-4c12-9cd5-bf4cb929537c")] int Height;
+  /// When the file was stored (UTC).
+  [Id("c84a70a5-b50f-41d2-bd0a-14edecf7f2bb")] DateTime StoredAt;
+  /// The opaque IFileAssetStore key the bytes live under (app-partitioned by the store factory).
+  [Id("8f6d2d67-5dac-40d3-9944-8ad46c131853"), MaxLength(400)] string StorageKey;
+}
+
+/// The per-app INDEX of stored foreign-control PACKAGES (D13, P2d) — the authority for "which control bundles this app has" (IFileAssetStore has no List). One row per content-addressed package: written at deploy when a new/changed bundle is uploaded, read by the same-origin serve endpoint (`/_osy/control/{Hash}`), and reconciled by the deploy-time GC sweep (referenced-hash set authoritative). OPERATIONAL rows — NOT emitted from source, so a recompile's source-reconcile sweep (UiComponent/UiTheme only) never drops them. Hash-uniqueness + size caps are enforced in the writing service, not via entity constraints (a Registry/Modules entity stays constraint-free so the PMM self-bootstraps).
+[Id("63e5dbd3-8b0a-40c7-b638-aa835acef498")]
+sealed entity UiControlAsset {
+  /// The content address — lowercase SHA-256 hex of the package bytes (app-unique). The `/_osy/control/{Hash}` URL segment + the dedup key.
+  [Id("8605fd9d-5d0b-4eca-8481-5b64387f9555"), MaxLength(64)] string Hash;
+  /// Package size in bytes (drives the per-app total cap + GC accounting).
+  [Id("d40c3bb4-2b0a-46f5-90b2-964f67d03f4d")] long Size;
+  /// The MIME type the serve endpoint returns (e.g. `text/javascript`).
+  [Id("b6b5be3d-7292-4aa3-8fa7-deb6c40e3b0c"), MaxLength(100)] string ContentType;
+  /// When the package was stored (UTC).
+  [Id("c21f9dd5-ff87-44fe-85db-11e225774c13")] DateTime StoredAt;
+  /// The opaque IFileAssetStore key the bytes live under (app-partitioned by the store factory).
+  [Id("8d263ee4-9c02-4473-b820-974a0b6ae967"), MaxLength(400)] string StorageKey;
+}
+
+/// The per-app WEB FONT MANIFEST (M50) — every font file this app ships, and how each must be declared. Written at compile from the `fonts` section of `osyrin.lock` (what `osy font add` pinned), read by `/_osy/font/{Hash}` to serve the bytes and by `app.css` to emit the matching `@font-face`. OPERATIONAL rows, like UiControlAsset — NOT emitted from source, so a recompile's source-reconcile sweep never drops them.
+/// It carries the `@font-face` DESCRIPTORS as well as the storage columns, which is the one place it deliberately diverges from UiControlAsset's pure-storage shape. A control's linkage has another home — the emitter stamps `UiControl.PackageHash` onto the control's manifest row — but a font has none: a theme names a family inside a CSS *value* (`Fonts { Body = "Hedvig Letters Serif, …" }`), which is a string, not a reference. So this row IS the manifest, the only thing that can answer "what does this app ship, and how should it be declared".
+/// IDENTITY IS THE WHOLE TUPLE, not the hash: one file can legitimately be registered under more than one weight/style, and keying the row by content address alone would silently keep the first descriptor set and drop the rest. The BLOB still dedups by hash — several rows may point at one stored file — which is why the serve path looks a hash up and takes any row carrying it.
+/// Constraint-free like every Registry/Modules entity (the PMM self-bootstraps); uniqueness + size caps are enforced in the writing store.
+[Id("dbf5ea30-bd01-462b-bda8-60e13deff19f")]
+sealed entity UiFontAsset {
+  /// The content address — lowercase SHA-256 hex of the font file's bytes. The `/_osy/font/{Hash}` URL segment + the blob dedup key. NOT unique across rows on its own (see the identity note above).
+  [Id("726e4d8e-a85e-4594-9411-1ecc4622f5f6"), MaxLength(64)] string Hash;
+  /// File size in bytes (drives the per-app total cap + GC accounting).
+  [Id("b9e68818-de2a-45a0-b7ad-f63d3e6549e7")] long Size;
+  /// The MIME type the serve endpoint returns (e.g. `font/woff2`).
+  [Id("a6d23df3-b2bf-41b6-87d1-40ece700881b"), MaxLength(100)] string ContentType;
+  /// When the file was stored (UTC).
+  [Id("a9be0543-23b3-476a-8022-089abc1905f5")] DateTime StoredAt;
+  /// The opaque IFileAssetStore key the bytes live under (app-partitioned by the store factory).
+  [Id("e8016fa8-a90f-45c8-a97b-296dd319420d"), MaxLength(400)] string StorageKey;
+  /// The `font-family` this file provides — exactly the name the app's theme spells in its `Fonts { }` value. Never guessed: `osy font add` refuses to infer it, because a wrong family renders the fallback while looking perfectly healthy.
+  [Id("95b648a2-172d-4d6f-adc5-d31ad2b95ca7"), MaxLength(200)] string Family;
+  /// The `font-weight` this file covers (e.g. `400`, `700`, or a variable font's `100 900` range).
+  [Id("14e3be55-95d0-4a5a-87ee-f4b1b1d41611"), MaxLength(50)] string Weight;
+  /// The `font-style` this file covers (`normal` / `italic`).
+  [Id("223568cf-0de6-48c3-8d2d-3525d3e1afea"), MaxLength(50)] string Style;
+}

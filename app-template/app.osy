@@ -1,0 +1,6 @@
+// The manifest. It names the app and says which files belong to it — `model` is the application, `tests` is what
+// proves it. Rename the app to suit what you are building; the globs rarely need to change.
+app GeneratedApp {
+  model "model/**/*.osy";
+  tests "tests/**/*.test.osy";
+}

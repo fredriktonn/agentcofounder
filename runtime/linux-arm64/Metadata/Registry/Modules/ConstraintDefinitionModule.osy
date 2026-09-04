@@ -1,0 +1,26 @@
+/// A validation rule applied to an entity or property
+[Id("bacc7d53-b582-48d2-9865-2c4dc9403e38")]
+sealed entity EntityConstraint {
+  /// Constraint reference value: the scalar the kind compares against (a regex, a number, a length)
+  [Id("3ce8c53b-e773-47b6-b660-86a5d104bfa4")] string? Value;
+  /// Constraint kind code defining the validation type
+  [Id("c23164d8-2450-4442-8977-512fa66e44b1")] int Kind;
+  /// The property this constraint validates; null for an entity-level constraint (e.g. an invariant spanning columns)
+  [Id("04ef1312-708f-4215-9336-1ecabe450fe6")] PropertyMetadata Property;
+  /// Error message shown when the constraint is violated
+  [Id("739395c0-f7bd-4f35-881a-9163ed2c375a"), MaxLength(500)] string? Message;
+  /// Unique identifier name for the constraint
+  [Id("891d2f4d-9e30-41c1-8a68-68512fd54022"), MaxLength(200)] string Name;
+  /// Filter expression that must be true for the constraint to apply
+  [Id("c691aefe-b139-4ed7-b97c-ab494cefca25"), MaxLength(500)] string? Condition;
+  /// The entity type this constraint applies to
+  [Id("53c5dbc6-e0a6-4ed5-9abe-c919f98857e8"), Required] EntityMetadata Entity;
+  /// WHICH DECLARATION IN SOURCE THIS ROW IS — the identity a recompile matches on, written once by the emitter and
+  /// never rewritten.
+  ///
+  /// ⚠ It exists because identity used to be DERIVED from (Property, Kind, Value) at load time, and `Value` is
+  /// CLEARED for a tree-backed `invariant` once its predicate is materialized. So the reconciler could never match
+  /// the row the previous compile wrote: every compile created another one, for every invariant, without bound —
+  /// app entities included. A stored key cannot be erased by a later pass over the same row.
+  [Id("90882c05-7179-4594-857d-f5fa44e412bc"), MaxLength(400)] string? SourceKey;
+}

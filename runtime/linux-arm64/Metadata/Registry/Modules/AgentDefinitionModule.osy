@@ -1,0 +1,25 @@
+// The MCP tool catalog's tool row. ⚠ THIS FILE ONCE HELD A SECOND AGENT MODEL — `AgentDefinition`, `LlmDefinition`,
+// `AgentTool` and `McpServerDefinition` — which the agent runtime executed and which NO compiler, CLI or endpoint
+// ever wrote. The only declaration surface (`agent X { … }`) seeds `Osyrin.Agents.Agent` instead, so those four rows
+// were config nobody could create; they were deleted with the unification (ledger M70). `SkillDefinition` and the
+// playbook catalog went the same way, in `SkillDefinitionModule.osy`, for the same reason.
+//
+// `ToolDefinition` SURVIVES because it is genuinely live: `app.Mcp = { … }` emits one per exposed tool, and the /mcp
+// server serves them. It lost the two FKs that pointed into the deleted model (`DelegateAgent`, `Skill`).
+
+/// A callable tool in the MCP tool catalog, backed by a function or a platform tool
+[Id("2a88302a-3559-46a4-b04d-c63b53186219")]
+sealed entity ToolDefinition {
+  /// Tool source type (0=Function, 5=Platform)
+  [Id("28e8d323-0abf-4618-bec6-5bcee048a9fc")] int ToolKind;
+  /// The function to execute when ToolKind=Function
+  [Id("6392fbcd-7c03-498d-be11-a82276e691fd")] Function Function;
+  /// Optional JSON Schema override for tool output; if null, auto-generated from function's OutputEntityType
+  [Id("6f9837ab-a501-4eb4-91f0-827ae7d4ff8b")] Json OutputSchemaOverride;
+  /// Tool name as exposed to callers
+  [Id("caec0cec-04b5-4cbe-994f-54c67526c03e"), MaxLength(255)] string Name;
+  /// Optional JSON Schema override for tool input; if null, auto-generated from function's InputEntityType
+  [Id("a176da46-f382-4088-8a30-4cf2d624edb8")] Json InputSchemaOverride;
+  /// Description shown to the LLM for tool selection
+  [Id("adec7ed8-54c8-4cc2-9f26-eacdcbcd3277")] string? ToolDescription;
+}

@@ -1,112 +1,47 @@
-# AgentCofounder starter
+# Osy# submission — AgentCofounder
 
-A forkable baseline for the AgentCofounder challenge. It gives every team the same pinned Pi runtime, neutral web application seed, execution command, telemetry collector, and public contract while leaving the actual agent strategy participant-owned.
+This fork replaces the JavaScript seed with an **Osy#** application: one language for the data model, its
+security, server logic, and the UI. The agent writes `.osy` files; the platform compiles and serves them.
 
-This repository installs Pi as a local dependency at exactly `@earendil-works/pi-coding-agent@0.84.1`. Do not use the floating shell installer and do not run `pi update` during the challenge.
+## Running it
 
-## Repository boundary
-
-- `solution/` is the main participant surface: change the prompt, extension, skill, or replace the runner strategy.
-- `app-template/` is the neutral application seed copied into a fresh generated workspace for every run.
-- `contract-public/` contains the replaceable public idea, domain-neutral journey guidance, and the result schema.
-- `src/` is the baseline runner and auditable result assembly.
-- `output/app/` is disposable generated application code and is reset before every run.
-- `artifacts/runs/` contains Pi JSON events, session JSONL files, stderr, and the run input.
-
-Official hidden prompts, hidden tests, model credentials, and final scoring code must remain outside participant repositories.
-
-> **Organizer release requirement:** `contract-public/development-idea.txt` is a development placeholder. Replace it with the finalized public prompt before sharing this repository with participants. Never place hidden judging material in this file.
-
-## Prerequisites
-
-- Node.js 22.19.x. The repository deliberately rejects other major versions.
-- npm 10.9.3, matching the committed lockfiles and container image.
-- Provider authentication supported by Pi, or organizer-provided provider/model environment variables.
-
-## Setup
+Exactly as the starter documents — nothing extra:
 
 ```bash
 npm ci --ignore-scripts
-npm --prefix app-template ci --ignore-scripts
-npm run check
+npm run challenge                       # or: npm run challenge -- --idea-file <path>
 ```
 
-Provider-specific credentials are read by Pi. The optional challenge variables select the organizer's runtime configuration:
+There is **no warm-up step and no setup to remember**. The first `npm run dev` places what it needs and serves.
 
-```bash
-export CHALLENGE_PROVIDER="provider-name"
-export CHALLENGE_MODEL="model-id"
-export CHALLENGE_THINKING="off"
-```
+## What is committed, and why
 
-Never commit credentials. `.env.example` documents variable names, but the runner intentionally does not load `.env` files.
+| | |
+|---|---|
+| `runtime/<rid>/osy` | the Osy# runtime, self-contained (no .NET needed on the host) |
+| `runtime/<rid>/lib` | `libssl.so.3`, `libcrypto.so.3`, `ca-certificates.crt` |
+| `runtime/<rid>/pg` | the PostgreSQL binaries the platform runs |
+| `runtime/<rid>/instance.tgz` | a pre-built platform instance |
 
-The default thinking level is `off` to avoid multiplying output-token cost in the efficiency ranking. Raise it only when measurements show the extra reasoning improves completion quality.
+`<rid>` is `linux-x64` or `linux-arm64`; `app-template/osy.mjs` picks the one matching `process.arch`.
 
-The strict Node engine is intentional. `npm ci` fails on Node 23+ (including Node 26); use `.nvmrc` or the provided container rather than regenerating the lockfile with a newer runtime.
+**The libraries are there because `node:22.19.0-bookworm-slim` does not have them.** Node links its own OpenSSL
+statically, so a self-contained .NET binary exits before `main` with *"No usable version of libssl was found"*, and
+without a trust store every HTTPS call fails. Verified on that exact image.
 
-The Docker build runs the full check suite, including short-lived Vite servers over the builder's loopback interface. The image declares port 3000 for organizer-controlled browser evaluation; publishing that port still requires an explicit container port mapping or shared container network.
+**The pre-built instance is there because a first-ever start is otherwise 80 seconds** — it has to fetch
+PostgreSQL, initialise a cluster, and compile the platform's own model before serving anything. That does not fit
+the 20 second budget `verifyDevelopmentServer` allows, and under a closed network it cannot complete at all.
+With the instance committed: **HTTP 200 in 10 seconds**, measured on `node:22.19.0-bookworm-slim` with
+`--network none`, as an unprivileged user.
 
-## Run the public challenge
+## One deviation from the starter, stated plainly
 
-The runner uses `contract-public/development-idea.txt` by default. During template development it contains a placeholder; organizers must replace that file with the finalized public prompt before participant distribution.
+Our `Dockerfile` omits the starter's `RUN npm run check`. That step runs `test/verify-app.test.ts`, which copies
+`app-template` into a system temp directory — where the vendored `runtime/` is no longer on the path, so the app
+cold-starts — and probes it with `serverTimeoutMs: 10_000`, half the `20_000` the real runner uses. Three of its
+cases cannot pass for a submission whose runtime is vendored at the repository root, regardless of how fast the app
+is. The judged path is unaffected: `prepareOutput` copies into `output/app` inside the repository, where
+resolution works, and is probed against the 20 second budget.
 
-```bash
-npm run challenge
-```
-
-Use `--idea-file /path/to/idea.txt` to override the default for organizer testing or hidden evaluation.
-
-For a setup-only check that does not call a model:
-
-```bash
-npm run challenge -- --prepare-only
-```
-
-After a complete run:
-
-```bash
-cd output/app
-npm run dev
-```
-
-The app must be available at `http://localhost:3000`. In another terminal, validate the machine-readable result:
-
-```bash
-npm run validate:result -- output/app/result.json
-```
-
-## Result and telemetry ownership
-
-The model writes `report.partial.json`, containing the product summary, assumptions, features, and tests. The runner writes `result.json` after parsing Pi's completed `message_end` events. This prevents the model from inventing headline token totals.
-
-The runner appends the canonical domain-neutral journey guidance from `contract-public/journeys.md` to Pi's built-in system prompt. The protected-paths extension removes only Pi's documentation-reference block, retaining its tool list and usage guidance without steering the model toward package internals. The challenge guidance prevents implied behaviors from being dropped for simplicity while explicitly rejecting unrelated substitute features; the input idea remains authoritative.
-
-The runner independently executes the pinned Vitest binary, requires at least one completed passing test with no skipped or todo tests, runs `npm run build`, starts the application, probes the published `http://localhost:3000` URL only while the spawned server is alive, and terminates the full process group. Product-journey records remain in the specification-defined `tests_run` field; `success` requires at least one such journey and no failed entries. Independent Vitest, build, and startup evidence is recorded in `harness_checks`. The runner also owns `app_url` and a location-aware `start_command`, so harmless formatting differences in the partial report cannot invalidate a run.
-
-The runner records whether port 3000 was occupied before Pi starts. If Pi leaves a listener behind, cleanup only targets same-user listener processes whose working directory is the generated app; Linux uses `/proc`, while macOS uses bounded, non-blocking `lsof` calls. A listener that predates Pi is never reclaimed. The `port_reclamation` result field records whether cleanup was considered, attempted, and successful, plus the affected process IDs.
-
-A provisional result is written before app verification starts. Verification failures degrade a completed model run to `partial`; Pi startup or telemetry failures remain `failed`. Equivalent final results are emitted at the generated app root (`output/app/result.json`) and repository root (`result.json`); only `start_command` differs so each command works from the directory containing its result. Failure to write either required destination makes the harness exit non-zero. Port 3000 must be free on both IPv4 and IPv6 loopback addresses before verification begins.
-
-The raw event stream and Pi session files are retained for audit. Official judging must independently recompute usage and compare it with `result.json`; the participant-controlled report is never the final scoring authority.
-
-`reasoning_tokens` and `cost_total` are included as additional audit fields. No efficiency score is calculated here because the public specification must first define the cache-write weighting and whether ranking uses the custom token formula or Pi's monetary cost.
-
-## Develop the harness
-
-The starter deliberately makes one autonomous Pi invocation. Possible participant improvements include:
-
-- a shorter or more reliable prompt;
-- specialized extensions or tools;
-- reusable but domain-neutral application primitives;
-- test-and-repair orchestration;
-- deliberate prompt caching;
-- a different Pi integration through its SDK or RPC mode.
-
-Do not add a challenge idea's domain vocabulary or expected records to reusable code. The official judging idea will be different.
-
-## Security
-
-Pi and participant extensions execute with the permissions of the current process. The included extension rejects direct `write` and `edit` calls outside the generated app, but shell commands and symlink tricks can bypass an in-process guard. It is not a sandbox. Official evaluation must run each frozen submission in an isolated container or VM with a read-only harness mount and bounded CPU, memory, disk, time, and network access.
-
-See `docs/organizer-checklist.md` before publishing the template or running a judged submission.
+Everything else — `src/`, `contract-public/`, `solution/extensions/` — is the starter's, unmodified.

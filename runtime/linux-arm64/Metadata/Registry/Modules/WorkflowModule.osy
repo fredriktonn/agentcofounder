@@ -1,0 +1,376 @@
+// WorkflowV2 — the versioned, world-class workflow metadata model. Built ALONGSIDE the legacy WorkflowModule.osy
+// (WorkflowDefinition/WorkflowInstance/WaitStateDefinition/Claim/…); the four names that would collide are renamed
+// here (WorkflowRevision/WorkflowRun/WorkflowState/WorkflowEvent). The old module is deleted wholesale at a later
+// cutover slice, at which point this file is renamed WorkflowModule.osy. Every handler body is an ExpressionRoot FK;
+// every cross-reference that CAN be an FK/tree ref is one — the sole deliberate string is WorkflowState.StateKey,
+// a stable cross-version identity that must survive versions where row FKs do not.
+
+// ── Definition side (versioned metadata) ─────────────────────────────────────
+
+/// Stable identity of a workflow across all its versions. New runs pin CurrentVersion; each edit mints a new
+/// WorkflowRevision under Versions while the family (and its bound entity/property) stays put.
+[Id("6381f05c-914c-4e96-8d90-389d8ba0d50d")]
+sealed entity WorkflowFamily {
+  /// Display name — stable across versions (the workflow's identity)
+  [Id("00afac0b-6c66-465b-b1d4-2e59be2b1d05"), MaxLength(255)] string Name;
+  /// The entity type whose lifecycle this workflow governs
+  [Id("e18d3576-a166-49dd-8a12-849fee8773b6"), Required] EntityMetadata BoundEntityType;
+  /// The property on the bound entity this workflow drives (a real PropertyMetadata FK — not a name)
+  [Id("2cb482e2-6543-4ee5-9035-aee20d4c2a84")] PropertyMetadata BoundProperty;
+  /// The active version new runs are started against
+  [Id("364035b1-0423-4b61-a23f-6b3a5e068d2c")] WorkflowRevision CurrentVersion;
+  [Id("59aa9e68-7ec5-4b7f-87b3-94700747592f"), ForeignKey(Family)] WorkflowRevision[] Versions;
+  /// The origin `.osy` file, stamped at compile so the full-app export regenerates the `workflow` block into its own
+  /// module file. Mirrors EntityMetadata.SourceFile; null when compiled from a single anonymous source.
+  [Id("2910abfa-d556-4543-b5af-7c462641de8e")] string? SourceFile;
+}
+
+/// A single immutable version of a workflow. Runs pin a specific revision (WorkflowRun.DefinitionVersion), so
+/// editing the family never mutates in-flight runs — the load-bearing versioning seam.
+[Id("af6bf90c-9a6f-40be-bad7-7e0b07259966")]
+sealed entity WorkflowRevision {
+  /// The family this version belongs to
+  [Id("ccf3c02c-54bd-4315-8808-5a3819b1671e"), Required] WorkflowFamily Family;
+  /// Monotonic version number within the family (1, 2, 3, …)
+  [Id("094687e4-c505-472b-bae8-6b91e2f2233c")] int Version;
+  /// The content hash of the source this revision was emitted from (the workflow's origin-file SourceFileHash). F3's
+  /// recompile DEDUP KEY: a recompile whose workflow source hashes identically reuses THIS revision (no churn); a
+  /// changed hash mints a NEW revision and RETAINS this one, so in-flight runs pinned to it (DefinitionVersion +
+  /// CurrentState) still resolve. Null on a legacy revision emitted before F3 (treated as "changed" → a safe re-mint).
+  [Id("3fc7e4df-014e-469a-9f68-ef3392be38ed")] string ShapeHash;
+  /// When true, a run auto-starts for each new instance of the bound entity type
+  [Id("10240af6-3912-48ae-aeb8-bd6dc6eb1dcb")] bool AutoStart;
+  /// Predicate gating auto-start (null = always); evaluated over the bound entity
+  [Id("93c4809f-2b36-4420-ad97-a8bb940d99fc")] ExpressionRoot AutoStartCondition;
+  /// The state new runs enter. `Initial` names a state; a run-time-chosen start is `Start { … goto X; }` (W80)
+  [Id("a24ec5de-ed07-4f3a-9686-541f5d1684f4")] WorkflowState InitialState;
+  /// Computed initial state — an expression returning which state to enter
+  /// The Start{} constructor body run once when a run begins
+  [Id("29b4cb22-2a46-426a-8ee4-9dc0651c9d9d")] ExpressionRoot StartBody;
+  /// The state a `Start { … goto X; }` redirects into, overriding the literal `Initial` (W80). Null when the Start
+  /// body does not transition. It needs its OWN FK for the same reason a route arm does: the resolver LIFTS a body's
+  /// top-level `goto` out of the tree into a target-state name, so without somewhere to put it the goto was parsed,
+  /// stripped from the body, and then discarded — a redirect that compiled clean and silently did nothing.
+  [Id("9da17395-f7cc-48ae-96c6-2d197724e36b")] WorkflowState StartGotoTarget;
+  /// Instance-wide deadline expression (the whole run must finish within this)
+  [Id("2b554446-084c-4afe-b0ab-1e54bd0db609")] ExpressionRoot Deadline;
+  /// The Deadline clock is WALL-TIME, not SLA-tick (W67) — source `Deadline { Within = …; Accrues = false; }`. A
+  /// wall-time clock ignores BOTH gates W55 introduced: the run's ServiceHours calendar and the per-state Accrues
+  /// pause. False (the default, and what the scalar `Deadline = <expr>;` form means) leaves it an SLA clock.
+  [Id("50511c66-604a-4349-9b38-0197ad657ca3")] bool DeadlineWallTime;
+  /// Per-state default expire (each state without its own Expire inherits this)
+  [Id("98413cc3-aaea-43a7-b6b3-b18986b6c557")] ExpressionRoot DefaultExpire;
+  /// The default Expire clock is WALL-TIME, not SLA-tick (W67). See DeadlineWallTime.
+  [Id("68da4183-baea-4543-ba2b-0c53230f3529")] bool DefaultExpireWallTime;
+  /// The SLA-accrual schedule this instance's clocks walk (W55) — a value over this.Item resolving to a ServiceHours
+  /// ref (e.g. this.Item.ServiceHours). The engine evaluates it at arm time; null ⇒ the identity/24-7 schedule.
+  [Id("27d13096-cd3a-4aac-b265-e16b2f3bd815")] ExpressionRoot ServiceHours;
+  [Id("17e245a5-ff4f-4850-9388-d2d96573aaa7"), ForeignKey(Definition)] WorkflowState[] WaitStates;
+  [Id("1b82b4f4-2265-42b9-b474-522028361707"), ForeignKey(Definition)] WorkflowEvent[] Events;
+  [Id("76a4f3ad-0987-4f5f-bb6e-2852e3bbfc8d"), ForeignKey(OwnerDefinition)] MilestoneDefinition[] DefaultMilestones;
+  [Id("4e0bf6e2-48f1-4f42-920f-480e19c5d3f7"), ForeignKey(OwnerDefinition)] RouteArm[] WorkflowRoutes;
+}
+
+/// A named wait state (Kind=State) or a terminal outcome (Kind=Terminal) within one revision. StateKey is the
+/// STABLE cross-version identity (the source state name) — the one deliberate string, because it must survive across
+/// versions where row FKs cannot.
+[Id("5bd2375d-3e20-40f4-a323-85e32f52fefd")]
+sealed entity WorkflowState {
+  /// The revision this state belongs to
+  [Id("b87606d6-b6e1-44c9-88ce-8eefccd0311e"), Required] WorkflowRevision Definition;
+  /// Stable cross-version identity = the source state name (deliberate string, not an FK)
+  [Id("07bd1579-479c-4d28-986f-cc620867287c"), MaxLength(255)] string StateKey;
+  /// Human-readable state name for this version
+  [Id("c09a0a15-1897-4dca-8a1f-baed3dc8e509"), MaxLength(255)] string Name;
+  /// Declaration order (0 = first)
+  [Id("bb9ad208-7515-46ec-9050-f903eead2c1b")] int Ordinal;
+  /// 0 = State, 1 = Terminal
+  [Id("c16b19e8-ad9b-485c-b077-cae4d1c3eb1f")] int Kind;
+  /// Terminal outcome: 0 = None, 1 = Success, 2 = Cancel, 3 = Error
+  [Id("d4c44b67-cdb5-496a-90c3-d66e4292ec20")] int TerminalOutcome;
+  /// Message emitted on terminal states (null otherwise)
+  [Id("3ea82815-3d5d-42f2-ad11-7eeb0b008523"), MaxLength(2000)] string? TerminalMessage;
+  /// Whether the SLA clock ticks while a run sits in this state
+  [Id("68f0ce9d-e8c0-4966-87f5-4075edcbba9c")] bool Accrues;
+  /// Per-state deadline expression (overrides the revision DefaultExpire)
+  [Id("c07cb802-bd9e-4459-9b24-e9e04d4f2bb6")] ExpressionRoot Expire;
+  /// This state's Expire clock is WALL-TIME, not SLA-tick (W67) — source `Expire { Within = …; Accrues = false; }`.
+  /// This is what lets a state OUTSIDE the workflow's `Accrues` list carry a timer at all: an SLA clock there would be
+  /// paused the instant the run entered the state, so it could never fire. An auto-close ("close 7 days after
+  /// Resolved") is the motivating case, and 7 days there means 7 real days, not 7 days of business hours.
+  [Id("7a3c5b9b-ba91-48a6-8b4b-44f0d4c648bd")] bool ExpireWallTime;
+  /// enter{} hook run when a run enters this state
+  [Id("6efad673-6a25-4acc-8c2c-e622667678c2")] ExpressionRoot EnterBody;
+  /// exit{} hook run when a run LEAVES this state (W9) — the symmetric counterpart to `EnterBody`.
+  ///
+  /// ⚠ It runs because a transition was ALREADY decided, which is why an exit body may not `goto`: the destination
+  /// is settled by the time this runs, and a second decision here would either override a choice already made or
+  /// bounce between two states' exit bodies for ever. `enter` may redirect (W93/W94) precisely because on entry the
+  /// destination is still the thing being decided.
+  ///
+  /// ⚠ The state's SLA clock has already STOPPED when this runs — `Accrues` measures time spent IN the state, and
+  /// work done on the way out is not that. So an exit body cannot inflate the metric it is reporting on.
+  [Id("b3f7c2d1-8e46-4a90-95bd-1c7e04a6f832")] ExpressionRoot ExitBody;
+  /// `complete when (<predicate>)` — the state's own completion condition, re-evaluated after any arm of this state
+  /// runs. Declared once, so a newly added arm cannot forget to check it.
+  [Id("f4b1a7c2-9d3e-4a58-b6f1-2c8e5d90a417")] ExpressionRoot CompleteWhen;
+  /// The state `complete when` transitions to when its predicate holds (null when no condition is declared)
+  [Id("a8c6e5b4-1f27-4d93-8a05-7be4c1f3d268")] WorkflowState CompleteTarget;
+  [Id("d0452546-4412-4ae8-89b7-260524b2d980"), ForeignKey(WaitState)] SlotDefinition[] SlotDefinitions;
+  [Id("df3f988a-12b8-4933-b9d9-85e9a3d76985"), ForeignKey(OwnerState)] RouteArm[] Routes;
+  [Id("c5adb328-254a-4b6d-82c8-f59d8ff543f8"), ForeignKey(OwnerState)] RequirementDefinition[] Requirements;
+  [Id("1808cfaa-c2c4-4543-b660-c4f872f85ecd"), ForeignKey(OwnerState)] MilestoneDefinition[] StateMilestones;
+}
+
+/// A declared event a revision can consume (via a slot subscribe) or produce (Workflow.Raise). Its parameters type
+/// the payload binding.
+[Id("bfacc97e-83d0-43b5-b1d3-a26072285e97")]
+sealed entity WorkflowEvent {
+  /// The revision that declares this event
+  [Id("3538db79-ec22-4a76-a28c-2c2ba4a840b6"), Required] WorkflowRevision Definition;
+  /// Event name (e.g. Payment)
+  [Id("90156157-6e43-48af-8ecf-e33e8a668021"), MaxLength(255)] string Name;
+  /// Declaration order within the events block
+  [Id("0978ee49-1a82-4f1d-bb5f-c6ddf957c19f")] int Ordinal;
+  /// Predicate for who may raise this event (null = unrestricted)
+  [Id("b12ede08-edab-492f-bfa5-7cd97976d094")] ExpressionRoot Authorize;
+  /// The `[Authorize]` lambda's principal parameter name (like SlotDefinition.CandidateVarName) — the engine
+  /// supplies the acting principal under it when evaluating the predicate
+  [Id("a68d01c9-68aa-40df-a731-e6860709ce95"), MaxLength(255)] string? AuthorizeVarName;
+  /// `[CorrelateOn(this.Item.<Prop> == <param>)]` — the predicate AS WRITTEN, for `osy model` and the decompiler.
+  /// The engine does not read it: the two FKs below are what a correlated deposit resolves through, because the
+  /// resolver has already constrained the predicate to exactly one equality and knows both of its sides.
+  [Id("b0961d0a-358b-41ca-a1da-ffe4a57de257")] ExpressionRoot CorrelateOn;
+  /// The TRACKED ENTITY's property an inbound key is matched against — a real PropertyMetadata FK, not a name, for
+  /// the same reason WorkflowFamily.BoundProperty is one. It is also what makes the uniqueness gate meaningful:
+  /// governance can ask "what correlates on this property" before anyone drops or renames it.
+  [Id("9b5b53e1-24fc-4e4b-a71e-c6abac45eb96")] PropertyMetadata CorrelateProperty;
+  /// Which of this event's own parameters CARRIES that key. An FK rather than a name because the parameter is a real
+  /// row here (unlike the `[Authorize]` lambda's variable, which is why THAT one is a string).
+  [Id("7122b0c6-2983-4148-83e3-d210898d005c")] EventParameter CorrelateParameter;
+  [Id("b6e34995-3744-40bc-ba1d-b74783c18880"), ForeignKey(Event)] EventParameter[] Parameters;
+}
+
+/// One typed parameter of a WorkflowEvent payload.
+[Id("08f448b3-081f-416c-8078-6a0dad93f3be")]
+sealed entity EventParameter {
+  /// The event this parameter belongs to
+  [Id("e13bb643-ce52-4529-8290-3c0984e66b5e"), Required] WorkflowEvent Event;
+  /// Parameter name
+  [Id("2a395907-0cb5-4895-b1ec-09f4af6577ef"), MaxLength(255)] string Name;
+  /// Declaration order within the event's parameter list
+  [Id("f0af1014-e6cf-467d-8c94-e98c2377e753")] int Ordinal;
+  /// 0 = Scalar, 1 = Entity, 2 = Enum
+  [Id("a1e59626-5a0f-478a-86ef-92340da094f3")] int TypeKind;
+  /// For TypeKind=Scalar: the PropertyTypeKind of the scalar
+  [Id("6afebb19-8f70-45b1-bac1-72cc69837554")] int? ScalarType;
+  /// For TypeKind=Entity: the payload entity type
+  [Id("17829fbc-24e0-4835-a90c-f7dc8483783a")] EntityMetadata EntityType;
+  /// For TypeKind=Enum: the payload enum type
+  [Id("19035643-cf53-4ba2-89ad-cbf1f3201df5")] Enum EnumType;
+}
+
+/// A subscribe within a state — a named thing the run waits for (an event, a fan-out, or a child workflow),
+/// optionally assigned/scoped/gated by expressions.
+[Id("2a03a9a9-b992-49d2-91de-e304506a7aa6")]
+sealed entity SlotDefinition {
+  /// The state this slot is declared in
+  [Id("62eaef3a-7738-4b69-9504-03df1c61be1e"), Required] WorkflowState WaitState;
+  /// The `as` alias naming this slot — and its STABLE CROSS-VERSION IDENTITY, the same job `WorkflowState.StateKey`
+  /// does for a state. A live `Slot.Definition` is a cross-DB Guid into ONE revision's rows, so moving a run to a new
+  /// revision means finding this slot's counterpart there, and this name is the only thing that can answer. It was
+  /// already the de-facto anchor; saying so is the difference between an invariant and an accident, because the
+  /// fallback when a name cannot be relied on is POSITION — which is how the same class bit this arc three times
+  /// (see Docs/OsySharp/cross_version_identity_audit.md). Renaming a slot is therefore a migration concern, not a
+  /// cosmetic edit.
+  [Id("ed30af45-38b2-4186-aa46-1ed292538f8b"), MaxLength(255)] string Name;
+  /// The event that satisfies this slot
+  [Id("e4bfda4b-2979-426b-ae2b-00197eb38174"), Required] WorkflowEvent Event;
+  /// Declaration order within the state
+  [Id("6e5e4c68-e478-4677-b541-128cdb270c51")] int Ordinal;
+  /// Candidate-principals selector (who may satisfy this slot) — the `principal => predicate` body
+  [Id("fe495084-8d7d-4d93-9dd9-775bda2d14ae")] ExpressionRoot Candidates;
+  /// The `Candidates` lambda's principal parameter name (like FanOutVarName) — the engine supplies the tested
+  /// principal under it when evaluating the predicate
+  [Id("f9baf1db-72d9-4761-9f02-9266e86fcec5"), MaxLength(255)] string? CandidateVarName;
+  /// Discriminator for the `Candidates` FORM (W92): false = a `bool` PREDICATE (evaluate on the tested principal);
+  /// true = a `List<Principal>` COMPUTATION (run it, then membership-check / enumerate the returned set). Default
+  /// false so existing predicate rows keep their behaviour.
+  [Id("32e91e22-05ed-46d6-b7a5-75450f445ba5")] bool CandidatesIsList;
+  /// WHO may HAND THIS SLOT ON to somebody else — the `actor => predicate` body of `Reassign = …;`.
+  ///
+  /// A different question from `Candidates`, and the two are both asked on every assign: `Candidates` is WHO MAY HOLD
+  /// the slot (asked of the TARGET), this is WHO MAY MOVE IT (asked of the ACTOR). Without it there is exactly one
+  /// answer to the second question — the slot's own holder may pass their work on — and a supervisor reassigning
+  /// somebody else's queue has no way in at all.
+  ///
+  /// Absent (null) means exactly that ONE answer, never "anyone": the holder, and nobody else. It is the fail-closed
+  /// default because a slot is a work commitment, so widening it is an app's decision to state.
+  [Id("6d5b5bf5-9e3b-4f71-b9bd-c9a120015d15")] ExpressionRoot Reassign;
+  /// The `Reassign` lambda's actor parameter name (like CandidateVarName) — the engine supplies the ACTING principal
+  /// under it when evaluating the predicate.
+  [Id("fd99d89b-5dd3-4bd8-ba64-8ab12b28772f"), MaxLength(255)] string? ReassignVarName;
+  /// The chosen assignee expression
+  [Id("6d6b2d6e-9c8e-4a8d-a8c1-3976bbb0f622")] ExpressionRoot Assignee;
+  /// `when` guard gating whether this slot is armed
+  [Id("48d2c8c7-ce57-4a74-a420-91101b2d0ec2")] ExpressionRoot When;
+  /// `foreach` collection this slot fans out over (one runtime Slot per element)
+  [Id("ab842203-b2bb-4255-88e0-f4f4ef055e25")] ExpressionRoot FanOut;
+  /// The loop variable name bound per fan-out element
+  [Id("d57392ee-4911-4def-9631-961b01a8d4c6"), MaxLength(255)] string? FanOutVarName;
+  /// Discriminator for the fan-out FORM (W39): false = a literal ENUM-MEMBER LIST fan-out (one slot per member,
+  /// addressed by member name, key = member name); true = a DYNAMIC runtime-collection fan-out (one slot per element
+  /// of an entity collection resolved at state entry, addressed by the acting principal, key = element.Id). Default
+  /// false so existing static-list rows keep their behaviour.
+  [Id("c57be1b3-837e-4303-81b5-83ec7df14b74")] bool FanOutIsDynamic;
+  /// Child workflow started as this slot — its completion deposits here
+  [Id("1182c63a-6b1d-4bd9-8763-7b125bb45b18")] WorkflowFamily ChildWorkflow;
+  [Id("fd3a5d09-f47c-44fe-84ee-58a134e157d9"), ForeignKey(OwnerSlot)] MilestoneDefinition[] Milestones;
+  [Id("274d5af2-24dd-48f2-a2d7-217def48f337"), ForeignKey(OwnerSlot)] RequirementDefinition[] Requirements;
+  [Id("7516315f-74ff-4df1-a779-2340d3c28efd"), ForeignKey(Slot)] SlotDependency[] Predecessors;
+}
+
+/// An `After` DAG edge: Slot may not arm until DependsOn is satisfied.
+[Id("217a1a93-3e08-4be0-b1b6-5fc1069abb06")]
+sealed entity SlotDependency {
+  /// The dependent slot
+  [Id("70836cb9-6dcc-48e0-a2c3-028470e5e521"), Required] SlotDefinition Slot;
+  /// The slot that must complete first
+  [Id("b702d644-25a2-437a-900d-3ba66c60a20a"), Required] SlotDefinition DependsOn;
+}
+
+/// An Assigned or Finished milestone with an SLA (Within), reminders, and a breach arm. Scope is exactly one of the
+/// three Owner* FKs: revision-level cascade default, state-level, or slot-level.
+[Id("151b1214-138d-408c-b060-685fd0e7729b")]
+sealed entity MilestoneDefinition {
+  /// Revision-level scope (cascade default across all states/slots)
+  [Id("b25ebdfc-4d44-48cb-849f-9f2e95786297")] WorkflowRevision OwnerDefinition;
+  /// State-level scope
+  [Id("dc62d2ac-8903-4905-8dfe-074a2016f6c9")] WorkflowState OwnerState;
+  /// Slot-level scope
+  [Id("2b0c0096-5ccc-4647-9cd1-7455eadd48c8")] SlotDefinition OwnerSlot;
+  /// 0 = Assigned, 1 = Finished
+  [Id("96fd794c-4c4c-44ce-bf8c-feafcacc69d7")] int Kind;
+  /// SLA budget expression (must reach the milestone within this)
+  [Id("8f4353e3-4e7d-4fb5-88ab-99e9a43d9d95")] ExpressionRoot Within;
+  /// This milestone's clock is WALL-TIME, not SLA-tick (W67) — source `Accrues = false;` beside `Within`. See
+  /// WorkflowRevision.DeadlineWallTime. A milestone whose Within is a real-time nudge rather than a service promise.
+  [Id("18b3ec8e-3d55-43a3-8115-b00fbaca1db8")] bool WallTime;
+  /// enter{} hook run when the milestone is reached
+  [Id("9b0015a4-6972-4c83-926f-1332eef32824")] ExpressionRoot EnterBody;
+  /// The goto target of the Unassigned/Unfinished breach arm
+  [Id("fcfd6eff-bef5-4b42-9f9a-846f67770285")] WorkflowState BreachTarget;
+  /// Body of the breach arm
+  [Id("0b4754ef-f734-4c36-9f48-5800147faa21")] ExpressionRoot BreachBody;
+  /// How many times to retry before breaching
+  [Id("42053363-64d0-4469-aa43-76fa2faee720")] int Retries;
+  /// Backoff expression between retries
+  [Id("ba92785c-d9e9-432a-81a1-c53a76582263")] ExpressionRoot Backoff;
+  /// Exhausted{} arm — run when the retries are used up (before the breach arm)
+  [Id("a749c062-56d7-4943-86cf-4d3e7d81c290")] ExpressionRoot Exhausted;
+  [Id("8868d3cd-e48d-4f74-97aa-615b278aae20"), ForeignKey(Milestone)] ReminderDefinition[] Reminders;
+}
+
+/// A reminder scheduled off a milestone — fires once at `After`, then optionally repeats every `ThenEvery`, running Body.
+[Id("118b8219-ece8-452e-9c9d-65f9d8444e88")]
+sealed entity ReminderDefinition {
+  /// The milestone this reminder hangs off
+  [Id("f52184cd-7b88-46bc-9410-b15653d9e135"), Required] MilestoneDefinition Milestone;
+  /// The author's name for this reminder (`Remind Nudge(After = …) { … }`) — its STABLE CROSS-VERSION IDENTITY, the
+  /// same job `WorkflowState.StateKey` does for a state. A live `WorkClock.ReminderDef` is a cross-DB Guid into ONE
+  /// revision's rows, so moving a run to a new revision means finding this reminder's counterpart there; before the
+  /// name existed the only way to do that was `Ordinal`, and inserting a reminder above another silently re-pointed
+  /// every live clock to a DIFFERENT reminder — the "nudge at 1 day" clock firing the "escalate at 3 days" body.
+  /// Required for exactly that reason: an ordinal is a position, not an identity (W-REMINDERID).
+  [Id("ccdf6d79-9351-40c1-a0ec-ae872678e80a"), MaxLength(255)] string Name;
+  /// Order among the milestone's reminders — DECLARATION ORDER, for regenerating source in the author's order. It is
+  /// NOT an identity; `Name` is. (It was the de-facto identity until W-REMINDERID, which is what made it dangerous.)
+  [Id("bfd24249-1b65-4a0e-9a57-faffa9c50277")] int Ordinal;
+  /// Delay before the FIRST fire (measured from milestone enter)
+  [Id("300202aa-c802-4664-92c3-4ea0d4b3c62e")] ExpressionRoot After;
+  /// Repeat interval applied AFTER the first fire (null = one-shot); requires After
+  [Id("9ef790aa-59a3-4e87-a4fa-d17fb73733fb")] ExpressionRoot ThenEvery;
+  /// This reminder's clock is WALL-TIME, not SLA-tick (W67) — source `Remind(After = …, Accrues = false) { … }`. A
+  /// reminder CADENCE is the case the entry names: "nudge every 10 minutes" usually means ten real minutes.
+  [Id("bceda38e-aed9-4bd0-bc3a-bb83275d7988")] bool WallTime;
+  /// The reminder body
+  [Id("29bdf5e9-defe-4861-be4e-2f7dec272a5f"), Required] ExpressionRoot Body;
+}
+
+/// A named requirement (criteria) that must hold. Scope is exactly one of the three Owner* FKs: a slot deposit gate,
+/// a state progression gate, or a revision-level cascade.
+[Id("f81d3cb1-621b-4112-b8ec-6d0c071fce14")]
+sealed entity RequirementDefinition {
+  /// Slot-level scope (deposit gate)
+  [Id("dbf80dfd-febe-47c8-9e88-5c10b84157de")] SlotDefinition OwnerSlot;
+  /// State-level scope (progression gate)
+  [Id("09a60905-7789-484a-a5f3-cdfa73f66251")] WorkflowState OwnerState;
+  /// Revision-level scope (cascade default)
+  [Id("1ea048bf-7fb5-41f6-9405-a2b553ca2786")] WorkflowRevision OwnerDefinition;
+  /// Requirement name
+  [Id("bc9f95e5-3685-4cd5-92e1-71c45c378467"), MaxLength(255)] string Name;
+  /// The predicate that must hold
+  [Id("d5ec2a0f-701a-4a3c-9b1e-611751c7b37e"), Required] ExpressionRoot Predicate;
+  /// Message surfaced when the requirement is unmet
+  [Id("b2fef474-25e7-4573-b417-e1655f19f732"), MaxLength(2000)] string Message;
+  /// Order among sibling requirements
+  [Id("976b7530-f64f-4543-af97-f345fe345c44")] int Ordinal;
+}
+
+/// One ordered, guarded `on`-arm. Scope is state-level (OwnerState) or workflow-level (OwnerDefinition). TriggerKind
+/// selects what fires it; Guard is the `when`; Target is the `goto`.
+[Id("1300ac56-0faa-4033-9020-10fdb5c6e653")]
+sealed entity RouteArm {
+  /// State-level scope
+  [Id("5ce5b9ae-d8e0-46dd-a9df-dbd6ecd04d89")] WorkflowState OwnerState;
+  /// Workflow-level scope (applies across all states)
+  [Id("ac1f07e3-3078-40dd-b50f-e5764f43d4a0")] WorkflowRevision OwnerDefinition;
+  /// 0 = Event, 1 = Slot, 2 = Complete, 3 = Expire, 4 = Deadline, 5 = Cancel
+  [Id("a1598e2e-73d7-4dab-ad34-70eb2eba4d8b")] int TriggerKind;
+  /// For TriggerKind=Event: the event that fires this arm
+  [Id("80d7984d-41b5-442c-b525-d9128a10508d")] WorkflowEvent Event;
+  /// For TriggerKind=Slot: the slot whose satisfaction fires this arm
+  [Id("f1aa95ae-b032-4945-8392-2b7e75218c5a")] SlotDefinition Slot;
+  /// Arm order (first matching wins)
+  [Id("737d85f5-3e46-4b52-be45-eca28f535fe6")] int Ordinal;
+  /// The `when` guard gating this arm
+  [Id("3d31823c-e4b1-46af-ab96-a3e6417ce2e4")] ExpressionRoot Guard;
+  /// Whether this is the default/fallback arm
+  [Id("48083092-bf1c-48d6-aa03-c07c574b1439")] bool IsDefault;
+  /// Whether this is the route's PRELUDE — leading statements that run UNCONDITIONALLY before any guarded arm is
+  /// selected (e.g. recording a vote row before the reject-guard reads the updated count). Never a transition.
+  [Id("2f6d4c1a-7c3e-4a9b-9e21-5b8d0f4a6c73")] bool Prelude;
+  /// The `goto` target state
+  [Id("515d9059-d6b9-4664-9fda-8cdaa7d3972c")] WorkflowState Target;
+  /// The arm body run on match
+  [Id("b2506b34-9b4f-45bc-b035-01b51d76ce8f")] ExpressionRoot Body;
+}
+
+/// The BODY of one `on <State> { … }` handler in an authored workflow migration — ordinary Osy# over the run's own
+/// row ([[W-MIGBODY]]), e.g. `this.Item.Priority = 3;`. The VERBS of the same handler live in the registry
+/// (`Admin.WorkflowMigrationStep`), because they are three strings and survive anything; a body is an expression tree
+/// whose Member nodes are FKs into ONE version's metadata, so it can only live where that metadata does.
+///
+/// It is stored in the version being MINTED (the migration's `to`), resolved against that version's model — which is
+/// also the world the write lands in, since a run applying this body is on its way to exactly this version. The
+/// version GC therefore retains a version that still hosts a reachable body: a durable fact inside a collectable
+/// scope is this subsystem's characteristic bug, and this is the one place a migration could have reintroduced it.
+[Id("a60416e5-f76d-4236-8640-3c1149897de4")]
+sealed entity WorkflowMigrationBody {
+  /// The workflow the migration names. Matched by NAME across versions, like every other cross-version pointer here
+  [Id("31e75c79-9380-4861-8714-10041728eebe"), MaxLength(200)] string Workflow;
+  /// The app VERSION ORDINAL this migration moves runs FROM (the header's `v1` in `v1 -> v2`)
+  [Id("1d4b90b8-500b-4939-b4c2-74d37d35b93f")] int FromVersion;
+  /// The app VERSION ORDINAL it moves them TO — the version this row itself lives in
+  [Id("6a66cb1e-d848-4c6a-99eb-ca40f3de95a5")] int ToVersion;
+  /// The state a run is parked in, as the version being migrated FROM names it
+  [Id("3cedc36f-4679-4cca-9a96-6bcf34e6594e"), MaxLength(200)] string State;
+  /// The handler's statements, as a function-body tree over `this.Item`
+  [Id("315b7ea9-d7d7-4c77-9167-e6c77fddb770")] ExpressionRoot Body;
+}
+
+// ── Runtime side ──────────────────────────────────────────────────────────────
+// RELOCATED to the data-DB baseline (Dsl/OsySharp/Baseline/Core/Workflow.osy). The new durable workflow engine
+// commits runtime state through the data-context, so the runtime entities (WorkflowRun, Slot, WorkClock,
+// WorkflowAuditEvent, PendingDeposit) must be data-DB-resident, not PMM/app-model-DB. Only the definition entities
+// above stay in the PMM. Runtime→definition cross-DB references become plain Guid columns in the baseline.

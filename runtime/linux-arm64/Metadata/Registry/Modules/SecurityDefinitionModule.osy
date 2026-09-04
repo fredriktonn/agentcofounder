@@ -1,0 +1,63 @@
+/// Default access permissions and rules for an entity type
+[Id("7a6b4e13-a8bf-4235-a722-2fe78f47c133")]
+sealed entity SecurityPolicy {
+  [Id("5cb21587-f956-49f1-9da6-5f6c3aa4387b"), ForeignKey(Policy)] SecurityRule[] Rules;
+  /// Default effect for delete operations when no rule matches
+  [Id("082c2ef4-9327-497d-b35f-41d53e3ccf8d")] int DeleteDefault;
+  /// Human-readable summary of this policy's purpose
+  [Id("8b40b07b-6e19-4fb5-8738-2182b8020ed8"), MaxLength(255)] string Name;
+  /// Default effect for create operations when no rule matches
+  [Id("8329dc88-475d-4327-aac6-7b19b1945696")] int CreateDefault;
+  /// Default effect for read operations when no rule matches
+  [Id("aad1d086-1723-4815-8a25-b711cbb496a8")] int ReadDefault;
+  /// The entity type this policy governs
+  [Id("645ad604-0040-4f75-a02f-fee3cb0afea0"), Required] EntityMetadata EntityType;
+  /// Default effect for update operations when no rule matches
+  [Id("8bd2ee23-cbe7-455c-bdc4-d8c4bd0957e9")] int UpdateDefault;
+}
+
+/// A standalone, reusable named security predicate (`policy Admins => UserRole.Any(...)`) — a first-class
+/// authorization artifact referenced by name from multiple consumers (e.g. a `[Authorize(Admins)]` page). The
+/// predicate itself is a typed ExpressionRoot owned by (NamedPolicy, "predicate"), evaluated principal-only.
+[Id("112b80de-e832-4d88-892f-5442aa81e7f3")]
+sealed entity NamedPolicy {
+  /// The policy's declared name — the symbol `[Authorize(<name>)]` and other consumers reference.
+  [Id("a1165a6b-4bab-4dd0-bdb7-6df80bb7f146"), MaxLength(255)] string Name;
+  /// The Osy# predicate text (decompile source; the typed ExpressionRoot tree is the runtime representation).
+  [Id("fdb5db93-2f80-43b1-881f-f627c3356c2b"), MaxLength(4000)] string? Predicate;
+  /// The parameter signature of a PARAMETERIZED policy (`Org o`, comma-joined), or null for a plain no-arg policy. A
+  /// parameterized policy is CONTROL-ONLY (D104) — inlined at each control use, with NO resolved predicate tree — so it
+  /// can't be a server-side [Authorize]/where target; this column is what a decompile regenerates its `(…)` from.
+  [Id("4351cbb1-33cf-4086-bd5f-9eebc8ce8a75"), MaxLength(1000)] string? Params;
+  /// The bare source-module filename this policy was declared in (`ModuleName.osy`), stamped at compile so the full-app
+  /// export regenerates it into its own module file. Mirrors EntityMetadata.SourceFile.
+  [Id("d9ebe000-2dd9-4e2d-be9c-bd0ff263db0b")] string? SourceFile;
+}
+
+/// A specific access control rule within a security policy
+[Id("e804a1e9-7901-4a3e-853e-08d5058151e7")]
+sealed entity SecurityRule {
+  /// The parent security policy that owns this rule
+  [Id("61e76e4a-ee09-45d1-8101-ebfd5ded8067"), Required] SecurityPolicy Policy;
+  /// Human-readable explanation of what this rule controls
+  [Id("9a97aa1a-527b-4b81-ac98-8b009794c07f"), MaxLength(255)] string Name;
+  /// Error message shown when this rule denies an operation
+  [Id("d044932b-0d48-48bd-b522-4d479b963bc3"), MaxLength(1000)] string? Message;
+  /// The operation this rule governs
+  [Id("f53c62c5-b13b-4411-8c87-2ce7a154bbc2")] int Operation;
+  /// Condition expression determining when this rule is active
+  [Id("37b74808-ab80-4633-91f7-a5b19e615d33"), MaxLength(4000)] string? AppliesWhen;
+  /// Filter expression validated against property values on commit
+  /// Filter expression restricting which rows this rule applies to
+  [Id("4fb15671-2004-45dc-8b7f-7484dfa69b4c"), MaxLength(4000)] string? RowFilter;
+  /// Whether this rule allows or denies the operation
+  [Id("9aa8dfaa-92e9-4b04-91c4-68e3953b1e1e")] int Effect;
+  /// Whether this rule is currently active
+  [Id("875dfb13-a477-4cb7-86cc-0c9f5a9fe27c")] bool IsEnabled;
+  /// The specific property this rule restricts, or null for entity-level rules
+  [Id("6e0ce4c9-d326-477c-89ba-b892ea9ea7f8")] PropertyMetadata Property;
+  /// Evaluation order of this rule within its policy
+  [Id("9f311ec5-106e-4226-9ea3-4b35d2070392")] int Priority;
+  /// The entity type this rule applies to
+  [Id("0f2ff21c-4b1b-460a-b863-db6bf7240328"), Required] EntityMetadata EntityType;
+}

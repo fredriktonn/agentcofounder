@@ -1,0 +1,16 @@
+/// An audit record of a DDL operation applied during schema evolution
+[Id("0bca3abf-4146-469d-806f-4cf5b8054d4c")]
+sealed entity SchemaChange {
+  /// The SQL statement that was executed
+  [Id("292822ac-bb2d-482d-b8c2-7aeaff168f45")] string Sql;
+  /// Severity level indicating potential data impact
+  [Id("ef7a9baa-a546-4210-80b4-42832683ca3d")] int Severity;
+  /// Type of DDL operation performed
+  [Id("0e4b7288-d35d-420c-a3e6-724648ba6d2b"), MaxLength(50)] string ChangeType;
+  /// Timestamp when this schema change was applied
+  [Id("39da335f-fc54-4a8e-9079-ef01e5acecb4")] DateTime AppliedAt;
+  /// Name of the entity affected by this schema change
+  [Id("5790880f-b26c-491a-9493-341dd6263610"), MaxLength(200)] string EntityName;
+  /// Execution order within a single schema evolution batch
+  [Id("d2683b56-7fdd-4d22-979b-7bc6fe374519")] int Sequence;
+}

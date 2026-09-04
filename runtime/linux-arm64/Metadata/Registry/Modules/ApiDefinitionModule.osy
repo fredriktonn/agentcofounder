@@ -1,0 +1,84 @@
+/// REST API surface configuration for an application — multiple allowed per app
+[Id("0a7171a4-db91-4c3a-a660-208cac20f55c")]
+sealed entity ApiConfiguration {
+  /// Semver-style version — major part used in route prefix
+  [Id("ea5dfe2b-91ea-446f-aca2-f3090bbbe382"), MaxLength(50)] string? Version;
+  /// URL path segment (lowercase, kebab-case)
+  [Id("28bfb093-b989-4cca-9013-47c274471008"), MaxLength(100)] string? Route;
+  /// API description for OpenAPI info section
+  [Id("7bcdd121-22e8-42e1-bb60-ac162d8411e2"), MaxLength(2000)] string? ApiDescription;
+  /// Unique compiler identifier (PascalCase, no spaces)
+  [Id("42500a3b-6478-417e-9660-aec81316f0ee"), MaxLength(100)] string ApiName;
+  /// API display title for OpenAPI spec
+  [Id("7d2b91df-c5e8-4f2a-b97f-c886149e336b"), MaxLength(255)] string? DisplayName;
+  /// Comma-separated OAuth provider names (from auth: oauth: syntax)
+  [Id("b02c486d-5676-48d1-abb5-b1c007df902c"), MaxLength(500)] string? OAuthProviderNames;
+  /// If true, all entities exposed via CRUD (from 'expose all')
+  [Id("06462c06-68c4-4f30-a22f-2086086bc4e7")] bool CrudAll;
+  /// If true, emits OpenAPI deprecated markers and Deprecation/Sunset response headers
+  [Id("830ae21e-e62a-43ff-b975-a3a9350d718f")] bool IsDeprecated;
+  /// Bitmask: 1=ApiKey, 2=Bearer, 4=OAuth
+  [Id("541aa9e6-b9e3-4532-9017-ac880393a491")] int AuthMethods;
+  /// Optional date after which the API will no longer be available (ISO 8601). NULLABLE, and it always meant to be: the doc comment above says "optional", the emitter writes null for an API that declares no sunset (OsySharpConfigEmitter), and all three readers read it as `DateTime?` (OpenApiGenerator, RestApiEndpoints, the decompiler). Only this declaration disagreed — so an app that published a REST API without a sunset date failed at COMMIT with `null value in column "SunsetDate" violates not-null constraint`, which reads as a database problem and is a one-character model error.
+  [Id("0c60e8b0-942a-4ff8-8377-f0c358464d5c")] DateTime? SunsetDate;
+  [Id("e518ccdc-5e92-40bc-98e6-abf43d359e17"), ForeignKey(Api)] ApiEndpoint[] Endpoints;
+  [Id("b7ee0b84-68d1-4bcd-8d19-4c7c04d91c98"), ForeignKey(Api)] ApiCrudExposure[] CrudExposures;
+}
+
+// UserApiAccess (the per-user "may use this API" grant) is RETIRED (2026-07-22, D147 CPB-9): a published API
+// authorizes like the app itself — a valid credential + the app's security {}/RLS is the gate
+// (SECURITY-INVARIANT(rest-api-auth-is-token-plus-rls) in RestApiEndpoints), so there is no per-user API grant.
+
+/// Controls which CRUD operations are exposed for an entity type via REST
+[Id("2fad6ee4-4d9e-41c3-a64c-2d3223f3eafc")]
+sealed entity ApiCrudExposure {
+  /// The entity type to expose for CRUD operations
+  [Id("8badf7d2-c892-4113-94c8-f9abf818565b"), Required] EntityMetadata EntityType;
+  /// Expose POST endpoint for entity creation
+  [Id("511112e8-f739-4d24-9576-243d2ae0301d")] bool AllowCreate;
+  /// Expose DELETE endpoint for entity deletion
+  [Id("c0bab47c-a8a4-4e9f-8475-a37b13c42ddb")] bool AllowDelete;
+  /// Expose PATCH endpoint for partial updates via ApplyDelta
+  [Id("fbe3934b-5f64-4fea-b402-5bf7a234b724")] bool AllowPatch;
+  /// Expose GET endpoints for query and get-by-ID
+  [Id("5a401408-0451-424a-89ba-18860ea4e987")] bool AllowRead;
+  /// The parent API this CRUD exposure belongs to
+  [Id("19ffb73d-a726-4170-972c-443df1985612"), Required] ApiConfiguration Api;
+}
+
+/// Declares a function as a REST endpoint with routing and documentation metadata
+[Id("94331a86-75d5-4dac-b351-3db36fad6ffc")]
+sealed entity ApiEndpoint {
+  /// If true and SuccessStatus=201, emits Location header using output entity's Id
+  [Id("72d0bf68-f829-455c-9cfd-ecf3b46df2c9")] bool EmitLocation;
+  /// Endpoint identifier (PascalCase)
+  [Id("762024c7-b368-463c-a6fb-b0870c09a01e"), MaxLength(255)] string Name;
+  /// Route template relative to the API base path
+  [Id("885bbe0b-d900-461e-9008-681533d0d74f"), MaxLength(500)] string Path;
+  /// Short description for OpenAPI
+  [Id("443b80cb-c005-4a4f-b067-6f07dff485b8"), MaxLength(500)] string? Summary;
+  /// Comma-separated tags for OpenAPI grouping
+  [Id("0cbc7e3d-cf5a-43c6-8ea7-d82c712b2154"), MaxLength(500)] string? Tags;
+  /// HTTP method: GET, POST, PUT, PATCH, DELETE
+  [Id("9829a1b1-aed4-4e45-8e3b-90ed42d72c4f"), MaxLength(10)] string HttpMethod;
+  /// The parent API this endpoint belongs to
+  [Id("ef861e2f-acef-4885-9b58-2f6d35529ead"), Required] ApiConfiguration Api;
+  /// The function to execute (must have InputEntityType, must be synchronous)
+  [Id("ed39267a-9443-464a-a1d0-6520199b16b9"), Required] Function Function;
+  /// HTTP status code on success (default: 200, use 201 for resource creation)
+  [Id("91cd4b44-638a-4eff-8289-31e5758f6458")] int SuccessStatus;
+  /// Long description for OpenAPI
+  [Id("b6da85e4-d35f-45d3-b73a-f63ef24f941b"), MaxLength(2000)] string? EndpointDescription;
+  [Id("7bc3fb53-d71e-48ea-9229-d3a443784e6b"), ForeignKey(Endpoint)] ApiEndpointPathParam[] PathParams;
+}
+
+/// Maps a URL path parameter to a function input property
+[Id("a38a411e-5537-49fe-86b4-2d21742a8226")]
+sealed entity ApiEndpointPathParam {
+  /// Target property name on the function's input entity (PascalCase)
+  [Id("a038cbf7-3465-44c1-883c-26e50067eb4b"), MaxLength(255)] string InputProperty;
+  /// The endpoint this path parameter belongs to
+  [Id("b5a8058f-9078-4465-89b5-8965e2d7c2af"), Required] ApiEndpoint Endpoint;
+  /// Path template variable name (e.g., orderId)
+  [Id("17d50191-dc80-4f42-a304-29b50c414469"), MaxLength(100)] string PathParam;
+}

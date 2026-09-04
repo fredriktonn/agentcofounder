@@ -1,0 +1,24 @@
+/// An OAuth 2.0 / OIDC provider configured for authentication or connected account access
+[Id("fa0ec429-03d7-44f1-a523-d99eca96558f")]
+sealed entity OAuthProvider {
+  /// Comma-separated role names to assign to auto-provisioned users
+  [Id("fefb6c78-7954-448d-8b11-c4c8ef500bf4"), MaxLength(500)] string? AutoProvisionRoles;
+  /// Provider type: google, github, microsoft, oidc
+  [Id("2cdc247b-b798-458a-b331-4861426ab17e"), MaxLength(50)] string? ProviderType;
+  /// Name of the secret holding the client secret (not the value itself)
+  [Id("e5e1fd74-6b1f-48ac-9fb8-61abaef0a99f"), MaxLength(100)] string? ClientSecretName;
+  /// Space-separated OAuth scopes to request
+  [Id("aa8e8497-a283-4ba7-b2d3-669179fa38e3"), MaxLength(500)] string? Scopes;
+  /// Provider purpose: 'auth' for sign-in, 'connected' for API access
+  [Id("b3537cc7-22c3-4f73-a88c-4efacb99b6a6"), MaxLength(50)] string? Purpose;
+  /// OIDC issuer URL for discovery (required for 'oidc' provider type)
+  [Id("b589f23e-f526-4126-b4f7-adfa37c17044"), MaxLength(500)] string? Issuer;
+  /// OAuth client ID from the provider
+  [Id("8606b389-a630-47e1-ba85-ad6384002955"), MaxLength(500)] string? ClientId;
+  /// Comma-separated email domains allowed for auto-provisioning
+  [Id("a4771077-8cd1-4930-83c1-74c5adc07a9f"), MaxLength(500)] string? AllowedDomains;
+  /// Azure AD tenant ID or 'common' (for 'microsoft' provider type)
+  [Id("b1f08d68-9a29-4e1c-926e-95a3d084ac74"), MaxLength(100)] string? Tenant;
+  /// Osyrin-declared provider name (PascalCase)
+  [Id("426a8b1d-6ca9-4092-91ad-de8f0ae72823"), MaxLength(100)] string Name;
+}

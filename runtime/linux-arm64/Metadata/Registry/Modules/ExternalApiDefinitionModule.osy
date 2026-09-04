@@ -1,0 +1,80 @@
+/// A path, query, or header parameter for an external API operation
+[Id("e2fc323e-27e9-4995-882b-345eca19dcf2")]
+sealed entity ExternalApiParameter {
+  /// Platform type name for the parameter
+  [Id("fba4829d-7bb9-400f-8a2d-42bd48df6263"), MaxLength(100)] string ParamType;
+  /// The operation this parameter belongs to
+  [Id("57ad9dde-94bb-4ab5-b250-57494b2d537e"), Required] ExternalApiOperation Operation;
+  /// Parameter name as it appears in the API
+  [Id("8444cadc-a0ca-492f-9591-6a8fc185c2c4"), MaxLength(255)] string Name;
+  /// Where the parameter is sent: path, query, or header
+  [Id("0233c68c-6f13-4bc7-957d-fa2e7bbc3430"), MaxLength(50)] string Location;
+  /// Whether the parameter is required for the API call
+  [Id("f4bbe503-f5f4-49e0-853b-ce04afbe83b9")] bool IsRequired;
+  /// Source position of this parameter in the operation's signature (interleaves with the operation's body-param ordinal). Completes the operation metadata so a stored ClientCall tree node recovers its argument→parameter binding by position (slice-7) — the v2 analog of CallFunction recovering names from the callee's ordered signature
+  [Id("cbc16a9e-6c97-4537-839e-54ca951c3e0d")] int Ordinal;
+}
+
+/// Configuration for an external REST API imported from an OpenAPI spec
+[Id("c23e3a49-ac61-4573-9578-0bf412d10a90")]
+sealed entity ExternalApiConfiguration {
+  /// Max requests per time unit (0 = unlimited)
+  [Id("fc6585d5-fac0-4575-9ebd-b9537bc1d9b5")] int? ThrottleRate;
+  /// Base URL for all operations in this API
+  [Id("86419f90-8d07-458d-a1ab-202abdb42343"), MaxLength(500)] string? BaseUrl;
+  /// Time unit for throttle: s, m, or h
+  [Id("c1a0e954-e88e-4819-b03b-30972334fead"), MaxLength(10)] string? ThrottleUnit;
+  /// Documentation — original OpenAPI spec URL or file path
+  [Id("af85aa74-2515-4596-b659-f0c49b0d51c9"), MaxLength(500)] string? SpecSource;
+  /// JSON object of default headers sent with every request
+  [Id("866660e8-cfef-438d-83a4-1ec534d3db49")] Json DefaultHeaders;
+  /// Serialized auth configuration (kind, secret ref, placement, key name)
+  [Id("312dbc2b-410d-4977-aa44-1e77ac79d12f")] Json AuthConfig;
+  /// JSON array of HTTP status codes to retry on
+  [Id("39de715e-ccbe-43ef-9be1-fbcbd46bafc6")] Json RetryOnStatusCodes;
+  /// Default Content-Type for request bodies
+  [Id("0047997d-ea5b-487f-bce9-2e32ec5a3472"), MaxLength(100)] string? ContentType;
+  /// Initial retry backoff in milliseconds (doubles each attempt)
+  [Id("c180651e-6217-4df0-9575-eb86399893f2")] int? RetryBackoffMs;
+  /// Max retry attempts for transient failures (0 = no retry)
+  [Id("b406ad0d-7fe3-4c94-84af-46ef6c4e9384")] int? RetryMaxAttempts;
+  /// Namespace identifier for the external API
+  [Id("e215d492-bb3e-4ab4-8ee7-a1b251a2b586"), MaxLength(255)] string Name;
+  /// Default timeout in seconds for all operations (default: 60)
+  [Id("af8f2eda-98c8-4214-afe6-4b6d3f43df53")] int Timeout;
+  /// The bare source-module filename this client block was declared in — lets the full-app export regenerate the `client` declaration back into its own module file (D2)
+  [Id("7c2cceb0-42ad-412b-b3c8-9cd2f608814a"), MaxLength(255)] string? SourceFile;
+  [Id("903d7feb-4a68-4055-acde-0d3b09fb907b"), ForeignKey(Configuration)] ExternalApiOperation[] Operations;
+}
+
+/// An operation (endpoint) within an external API that can be invoked via callApi
+[Id("3a2bfefc-ec46-415f-9988-73f44225c71a")]
+sealed entity ExternalApiOperation {
+  /// The parent external API configuration
+  [Id("e602f1b8-577a-4b63-8d6a-341ffaf9b13c"), Required] ExternalApiConfiguration Configuration;
+  /// Unique operation identifier within the API
+  [Id("d41f6250-cbff-4593-a6f8-9ca8ee754947"), MaxLength(255)] string OperationId;
+  /// URL path template with parameter placeholders
+  [Id("5ac3a4f9-1703-4952-8795-31c576a14b1f"), MaxLength(500)] string PathTemplate;
+  /// Per-operation timeout override in seconds (null = use block default)
+  [Id("26c23868-9790-4544-b8e3-4a2deb848ca2")] int? Timeout;
+  /// Dotted path to extract response data from JSON (e.g., 'properties.periods' or 'data')
+  [Id("c7d77072-b37d-4a87-b308-6beb3875c01d"), MaxLength(500)] string? ResponsePath;
+  [Id("6d34a468-b96d-426c-8464-b16b293da008"), ForeignKey(Operation)] ExternalApiParameter[] Parameters;
+  /// HTTP method: GET, POST, PUT, PATCH, DELETE
+  [Id("b2aa74bf-fe22-4872-9a1e-2db465eba8f8"), MaxLength(10)] string HttpMethod;
+  /// Virtual entity type name for response (or 'Json' for untyped)
+  [Id("05fc147b-8623-493c-a0a4-02a60a55a772"), MaxLength(255)] string? ResponseEntityType;
+  /// True when the response type is a collection (`R[]`) — the element name is in ResponseEntityType (which drops the `[]`)
+  [Id("7aada84d-681d-4d13-b85a-6af44ba793db")] bool ResponseIsCollection;
+  /// Source position of this operation among the client's operations (declaration order) — for a deterministic export
+  [Id("3d113197-844f-4b87-a54a-5692435c85cd")] int Ordinal;
+  /// The operation's leading `///` doc comment (markers stripped, lines joined by \n); null when it has none
+  [Id("b400363e-8335-4b1d-bd2a-a6a1a57928b5"), MaxLength(4000)] string? DocComment;
+  /// Virtual entity type name for request body (null for GET)
+  [Id("7f047deb-ff5d-4703-8bc6-4f7553afaf62"), MaxLength(255)] string? BodyEntityType;
+  /// The source name of the request-body parameter (the lone unattributed entity-typed param), e.g. `request`; null when the operation has no body. Completes the operation signature so a stored ClientCall recovers the body argument's parameter name — the body is a first-class operation parameter, not a path/query/header param (slice-7)
+  [Id("8fb5dd7c-ebf4-4f22-bc08-38aab3ced9ac"), MaxLength(255)] string? BodyParamName;
+  /// Source position of the body parameter in the operation's signature (interleaves with the located params' Ordinal); ignored when BodyParamName is null (slice-7)
+  [Id("c986bfec-d26f-4fae-9c6a-cc0e02cc155c")] int BodyParamOrdinal;
+}

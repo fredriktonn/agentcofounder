@@ -1,0 +1,67 @@
+// The auth-config PMM entities live in the `Osyrin` system namespace (they were `osy.*`).
+
+namespace Osyrin;
+
+/// The app's authentication configuration — compiled from `app.Auth = …` (auth plan §8, Phase B).
+/// A SINGLETON per app (one row), holding the declared login methods. Read back at runtime via the `App.Auth`
+/// ambient. The console (create-user/login, Phase C) and the login page (Phase F) consume the methods.
+[Id("c792afd1-09cd-403c-8ba7-f52e2881a49f")]
+sealed entity AuthConfig {
+  /// Singleton sentinel name (stable, so the row is non-null and the orphan-sweep can key on it).
+  [Id("db162e5d-8c39-4a02-9097-f43154095552"), MaxLength(100)] string Name;
+  /// The login methods this app supports (PasswordAuth / OAuthAuth), in declaration order.
+  [Id("edd0c2ba-c86c-47a7-bcc2-c81c09dd8def"), ForeignKey(AuthConfig)] AuthMethod[] Methods;
+}
+
+/// One declared login method within an app's AuthConfig (auth plan §8/§9). A child of AuthConfig.
+/// `Kind` discriminates: Password (0) uses LoginField/PasswordField (property names on the [Principal] entity);
+/// OAuth (1) references a declared OAuthProvider via OAuthClient.
+[Id("19616caa-e37b-4b1b-b18a-b14ad951a41b")]
+sealed entity AuthMethod {
+  /// Parent AuthConfig.
+  [Id("f8328d5c-9fd0-46ea-9ec2-2c4fa55d0fc3"), Required] AuthConfig AuthConfig;
+  /// Method kind: Password=0, OAuth=1.
+  [Id("a5570453-a663-4d00-b1fb-dd508d633c91")] int Kind;
+  /// PasswordAuth: the [Principal] property used as the login id (e.g. Email).
+  [Id("e2fbe3bf-71de-4883-9ff1-df10892e1be3"), MaxLength(200)] string? LoginField;
+  /// PasswordAuth: the [Principal] property holding the password hash (e.g. PasswordHash).
+  [Id("c51199ab-ed1e-4cbb-9c3e-dd2f47d8ffe2"), MaxLength(200)] string? PasswordField;
+  /// OAuthAuth: the declared OAuth client (OAuthProvider) this login method uses.
+  [Id("a245e37d-fa6c-4469-8c59-2cf730e14a28")] OAuthProvider OAuthClient;
+  /// Declaration order within the AuthConfig (the login page renders methods in this order).
+  [Id("c7025a5f-6446-429f-8fe3-94a63a3a970f")] int Ordinal;
+}
+
+/// The app's auth-bootstrap declaration (auth_deny_all_and_bootstrap_design.md, Part B). A SINGLETON per app,
+/// compiled from `app.AuthBootstrap = new AuthBootstrap { Role = …; Login = …; Signup = …; PasswordReset = …; }`.
+/// Records the [Role] the engine mints a user-less ephemeral principal with, plus the functions the engine routes
+/// through that principal when invoked with NO authenticated ticket (the deny-all bootstrap paradox resolver).
+/// NO SecurityRule/predicate is emitted — the leash is the app's ordinary entity `security {}` grants for the Role.
+[Id("9c7045ca-647f-449c-80d5-6f72ae5a578e")]
+sealed entity AuthBootstrapConfig {
+  /// Singleton sentinel name (stable, so the row is non-null and the reconcile can key on it).
+  [Id("7bf33a7b-f9f1-4a7b-b33a-4f0b4da9612f"), MaxLength(100)] string Name;
+  /// The [Role] enum member the ephemeral principal bears (stored as the member name).
+  [Id("5004d013-c5a7-4b41-a41e-66287b72c382"), MaxLength(200)] string Role;
+  /// The login function routed through the ephemeral principal when unauthenticated.
+  [Id("108e91fa-11f1-49c0-a667-05eba18f6620")] Function Login;
+  /// The signup function routed through the ephemeral principal when unauthenticated.
+  [Id("e78b521f-61a7-433a-bb28-1a86e52ceb71")] Function Signup;
+  /// The password-reset function routed through the ephemeral principal when unauthenticated.
+  [Id("5b8a9c3d-2e4f-4a1b-9c6d-7e8f0a1b2c3d")] Function PasswordReset;
+  /// D101 — the OAuth signup-completion [AuthMethod]: called by the app's completion page (anonymous, armed as the
+  /// ephemeral principal) with a pending-oauth token to provision a new no-password User + the identity link. Optional.
+  [Id("d101a1b2-c3d4-4e5f-8a9b-0c1d2e3f4a5b")] Function OAuthSignup;
+  /// D101 — the OAuth account-link [AuthMethod]: called by the app's link-confirm page (anonymous, armed) with a
+  /// pending-oauth token to attach a provider identity to the existing local account with that verified email. Optional.
+  [Id("d101b2c3-d4e5-4f6a-8b9c-1d2e3f4a5b6c")] Function OAuthLink;
+  /// The invite-accept [AuthMethod]: called by the app's `/invite/{token}` page (anonymous, armed as the ephemeral
+  /// principal) with the invite token + the accepting user's credentials, to validate the token (unused, unexpired,
+  /// email-matched if restricted), provision/authenticate the user, and add their org membership. Leashed by the token
+  /// check in the fn body (the same shape as OAuthSignup — a foreign principal presenting a credential). Optional.
+  [Id("d112acc7-1a2b-4c3d-8e4f-5a6b7c8d9e0f")] Function AcceptInvite;
+  /// The app's login [Page] — its route is surfaced to the boot descriptor so the client redirects an
+  /// unauthenticated visitor to a DECLARED page instead of guessing `/login`. Optional (absent → the client's
+  /// `/login` fallback).
+  [Id("02b43005-4873-4048-8722-eed60195cbfc")] UiComponent LoginPage;
+}

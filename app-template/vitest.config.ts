@@ -1,11 +1,10 @@
-import react from "@vitejs/plugin-react";
-import { defineConfig } from "vitest/config";
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  plugins: [react()],
   test: {
-    environment: "jsdom",
-    passWithNoTests: false,
-    setupFiles: ["./src/test/setup.ts"],
+    // The app's real tests run inside the platform, and a UI journey drives a real browser client against a real
+    // server — seconds each, not milliseconds. The default 5s timeout would fail a passing app.
+    testTimeout: 120_000,
+    hookTimeout: 120_000,
   },
 });

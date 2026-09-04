@@ -1,0 +1,18 @@
+/// Declarative index on one or more entity columns
+[Id("fb10c3a0-0907-4886-8e60-3e7f486754fe")]
+sealed entity IndexMetadata {
+  /// The entity type this index belongs to
+  [Id("74d079be-9ea4-47bc-9be2-2d90f2b1d4e6"), Required] EntityMetadata Entity;
+  /// Auto-generated physical index name for evolution tracking
+  [Id("193a81ca-b108-4790-be77-0c0bfe44aedc"), MaxLength(255)] string? Name;
+  /// Filter predicate for partial index (Osyrin query syntax, compiled to SQL WHERE clause). LEGACY/v1 text path; Osy# authoring stores the typed tree on WherePredicate instead (P5-3). Retained for v1 Osyrin until v1 is removed.
+  [Id("95c50e3b-6a9a-4892-aee2-054303cf290d")] string? WhereClause;
+  /// Ordered JSON array of property IDs that form the index columns
+  [Id("acdc5f14-2d24-4c10-b850-755827c7a0f1")] Json Properties;
+  /// Partial-index filter as the persisted typed expression tree (D-Q1, P5-3). When set, the schema-evolution + decompiler paths lower/render from this tree; WhereClause text is the v1-only fallback. Osy#-authored partial indexes are tree-only.
+  [Id("f1800672-f0e7-437a-8896-aed5344ae9eb")] ExpressionRoot WherePredicate;
+  /// True for indexes auto-created from inline index = modifier
+  [Id("ef225aea-7817-4cb0-b3e8-99af043f28ec")] bool IsSystemGenerated;
+  /// Index algorithm (Choice: IndexType): Btree=0, Unique=1, VectorIvfflat=2, VectorHnsw=3, Gin=4
+  [Id("70bfb388-2651-4d39-b009-39039cca5d34")] int IndexType;
+}

@@ -1,0 +1,96 @@
+/// A callable Osy# function. v2 is BodyRoot-only: the typed body tree hung off `BodyRoot`
+/// (an ExpressionRoot) is the SOLE representation — it carries the body AND the signature
+/// (parameters as scope bindings, the return contract), which AmmFunctionTreeLoader recovers into
+/// ResolvedFunction.Parameters/ReturnType. Nothing signature-shaped is denormalized onto the row.
+/// The v1 action-graph model (ActionInstance/Transition/*Action/*Assignment/FunctionVariable/
+/// InputMapping/TryRegion/ExpressionNode/FunctionParam) is gone (v1-removal step 5).
+[Id("77f0a359-f448-4879-abd6-c22fbd3f6534")]
+sealed entity Function {
+  /// Regular=0, Workflow=1, API=2, WorkflowHandler=3, Constructor=4, PropertyGet=5, PropertySet=6
+  /// (PropertyGet/PropertySet: a `class` property accessor body — class_property_accessors_design.md)
+  [Id("81e9b7e1-5d58-4bb3-8140-0551ee686154")] int FunctionType;
+  /// Osy# test classification (D19): NotATest=0, Test=1, TestFixture=2
+  [Id("938bebef-aa54-45f4-bd06-5f1b9a5010c7")] int TestRole;
+  /// The ExpressionRoot (Purpose=FunctionBody) anchoring this function's body tree — its scope
+  /// Bindings are the params + implicit context, its ResultType* the return contract. The sole
+  /// representation the durable interpreter runs.
+  [Id("1062b2bf-2061-4b72-8ab9-2f521117c4a8")] ExpressionRoot BodyRoot;
+  /// Human-readable description of what this function does
+  [Id("29f065ba-4db8-4eaa-9af0-2acad5abed82"), MaxLength(1000)] string? Intent;
+  /// When true, the function executes in its own isolated data context
+  [Id("d308a451-d6c7-4d81-9600-d8d0467880a9")] bool RequiresOwnContext;
+  /// When true, this function can be executed by anonymous (unauthenticated) users
+  [Id("1474002f-5711-4f8a-b773-c72527dba710")] bool AllowAnonymous;
+  /// The author's DECLARED execution side — `[Client]` or `[Server]` — or null when they left it to the compiler
+  /// (the normal case). Side is INFERRED from the body (parity K1); this is an ASSERTION on top of that, and it
+  /// PINS the answer: a later body edit that drags the function server-side becomes a compile ERROR rather than a
+  /// silent round-trip. `[Client]` additionally fails the compile if the body cannot run on the client at all.
+  /// Persisted because the decompiler must regenerate the attribute — a declaration the source stated and the
+  /// round-trip dropped is a lie about the author's intent. Stores the ExecutionSide int; null = inferred.
+  [Id("76e7f63c-2ec4-41c5-82fc-96d02e289a54")] int? DeclaredSide;
+  /// When true, this function is an authentication-flow entry point declared `[AuthMethod]` and wired in
+  /// app.AuthBootstrap. It is reachable by an anonymous caller (the deny-all endpoint gate admits it, like
+  /// AllowAnonymous) and, when invoked unauthenticated, the SecurityManager runs it as the ephemeral principal
+  /// bearing the AuthBootstrap Role. The compiler enforces [AuthMethod] ⇔ wired in AuthBootstrap (both ways).
+  [Id("5961a7fa-7e1f-4f52-beb8-f706409a597e")] bool IsAuthMethod;
+  /// For a [Test(Fixture)] function (D19): the [TestFixture] function whose seeded state this test forks from
+  [Id("681debb9-680b-4119-9205-41aea3f44512")] Function TestFixture;
+  /// Display name of the function
+  [Id("97fbf1e9-52b6-498e-89be-4baea1f249c0"), MaxLength(255)] string Name;
+  /// The parameter-type SIGNATURE, canonical and comma-separated (`"decimal,string"`; `""` for none) — the third
+  /// component of a class member's identity once OVERLOADING exists (class parity slice 3).
+  ///
+  /// A member used to be identified by (DeclaringType, Name), which is what every lookup keys on: the interpreter
+  /// resolves a body by the scoped name `Class.Method`, the emitter binds a call site's CallFunction FK by
+  /// (class, method), and virtual dispatch walks ancestors asking "does this one declare a row for that name".
+  /// Overloading makes that a SET, so the name alone stops identifying anything.
+  ///
+  /// ⚠ It is a COLUMN rather than something folded into Name, deliberately. Name is the SOURCE name and is read as
+  /// such by the decompiler, the debugger's file:line resolution, `osy model` and every diagnostic — mangling it
+  /// would make all of those show a spelling no author wrote. Null on a top-level function, which cannot overload.
+  [Id("c4f3a1d8-6b29-4e57-9f80-2d5a7e13c9b4"), MaxLength(500)] string? Signature;
+  /// This function's OWN type parameters, comma-joined by NAME (`"T"`, `"T,U"`) — a generic METHOD or a generic
+  /// top-level function (Tier 1b). Null for the overwhelming majority, which declare none.
+  ///
+  /// ⚠ It has to persist, and this row is the only place it can. A generic CLASS records its parameters on
+  /// `EntityMetadata.TypeParams`, and a method's are a different set with a different binder: the class's come from
+  /// the RECEIVER (`new Box<Report>()`), the method's from each CALL. Two things need them back:
+  /// (1) the DECOMPILER, which would otherwise re-render `Describe<T>(T v)` as `Describe(T v)` — a declaration that
+  ///     no longer resolves, since `T` would name nothing;
+  /// (2) the AMM LOADER, which zips these names against a call node's stored `TypeArgs` to substitute an OPEN
+  ///     RETURN. Without that, `u.Echo(r).Title` reloads with its target still typed `T` — no properties — and a
+  ///     body the compiler accepted fails at LOAD time. Mirrors `EntityMetadata.TypeParams` deliberately: same
+  ///     shape, same comma-joined text, so the two cannot drift into describing genericity differently.
+  [Id("f2e171b5-b4fe-4dd6-80d9-e5487ef3b924"), MaxLength(200)] string? TypeParams;
+  /// A `static` class method (class parity slice 8) — called on the TYPE, with no receiver.
+  ///
+  /// ⚠ Unlike `virtual`/`override`/`abstract`, which are checked at declaration and stored nowhere, this one MUST
+  /// persist, and for two independent reasons. (1) A `MethodCall` node's children are receiver-then-args for an
+  /// instance call and args-only for a static one, so the AMM loader cannot read a stored call correctly without
+  /// knowing which — and it reads it off THIS row, the same way it recovers `Signature`, rather than from a second
+  /// copy on the call node that could disagree. (2) The decompiler must re-render the word: dropping it turns a
+  /// static method into an instance one, and every call site that named the type stops resolving.
+  ///
+  /// Always false on a constructor, an accessor and a top-level function — none of those can be declared static.
+  [Id("fbdc889b-638e-4e46-af5a-87500a164602")] bool IsStatic;
+  /// The declaring class when this is an instance METHOD on a `class` (class_methods_design.md, C4): the
+  /// method's body root carries the `this` Receiver binding; call sites are MethodCall (60) nodes. Null for
+  /// a top-level function.
+  [Id("3f8c1a7e-92d4-4b06-8a51-c5e0f7d2b813")] EntityMetadata DeclaringType;
+  /// Member visibility (Public=0, Private=1 — MemberVisibility). Bare method on a class = private (C#);
+  /// top-level functions are always Public. 0-default keeps pre-existing rows public.
+  [Id("b2a6e94d-31c8-47f5-9d2e-84a1c6f3e057")] int Visibility;
+  /// A constructor annotated `[SetsRequiredMembers]` (class_property_accessors_design.md): it definitely assigns
+  /// the class's `required` members, so `new T(args)` needs no object initializer for them. Only meaningful on a ctor.
+  [Id("6d1f4b0a-8c72-4e39-9a5b-1f0c7d2e63a4")] bool SetsRequiredMembers;
+  /// The bare source-module filename this function was declared in (`ModuleName.osy`), stamped at compile so
+  /// a debugger can resolve an editor `file:line` breakpoint to the function(s) that file declares. Mirrors
+  /// EntityMetadata.SourceFile; null when compiled from a single anonymous source.
+  [Id("b706e98e-cf94-4d45-a66d-2b24621955b6")] string? SourceFile;
+
+  /// A hash of the SOURCE FILE this function was declared in (SHA-256 of the LF-normalized text), stamped at
+  /// compile. Comparable across the C#/TS seam by construction (a text hash, not a side-scoped structural
+  /// version), so the debugger can point at the developer's on-disk `.osy` ONLY when its bytes match what was
+  /// deployed — otherwise it shows the decompiled tree, never a local file whose code differs from what runs (P5-6).
+  [Id("67142f2f-1de8-492e-89d8-3c6cb37115f4")] string? SourceHash;
+}

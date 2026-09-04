@@ -1,0 +1,10 @@
+/// Maps a data classification level to the roles permitted to view unredacted values
+[Id("fdeed3c4-203e-4445-8174-057c70e73934")]
+sealed entity ClassificationRoleConfig {
+  /// Comma-separated role names permitted to see unredacted values at this level
+  [Id("4aca0efa-5741-49a8-9c25-15ac84c026bc"), MaxLength(4000)] string? Roles;
+  /// The application this configuration belongs to
+  [Id("24344c61-497b-4c68-a825-4bdad0c06975"), Required] ApplicationInformation Application;
+  /// Classification level name (e.g. PII, Financial, Secret)
+  [Id("c4a4db78-96a4-4d69-ba8e-4df69a74fad9"), MaxLength(100)] string Classification;
+}

@@ -1,0 +1,23 @@
+// LlmConfig — the app-default LLM model configuration, a PMM entity in the `Osyrin` system namespace.
+// Split out of AgentDefinitionModule.osy by the Osyrin rename: its siblings there are root-namespace PMM
+// entities (ToolDefinition, AgentDefinition, …), while this one is deliberately namespaced so an app's own
+// `LlmConfig` cannot collide with it.
+
+namespace Osyrin;
+
+/// App-default LLM model configuration — a per-app singleton compiled from
+/// `app.DefaultModel = new LlmConfig { … }`. Distinct from the per-agent LlmDefinition (which agents
+/// reference), so the app default never collides with an agent's own model row.
+[Id("739c49db-3fbc-44b2-8917-18a94984445d")]
+sealed entity LlmConfig {
+  /// LLM provider — stable encoding of the LlmProvider enum (0=Anthropic, 1=OpenAI, 2=Gemini, 3=OpenAICompatible)
+  [Id("9ae388a6-eac7-4b3f-bb0a-c6dc9e7d299d")] int Provider;
+  /// Model identifier (e.g. claude-opus-4-8, gpt-4o, gemini-2.5-flash)
+  [Id("3dae0e07-3232-4c6d-96d8-c991fb7bf5d7"), MaxLength(200)] string? Model;
+  /// Secret containing the API key
+  [Id("c6a382ce-c8ac-417d-956d-e7061fe00c8d")] SecretDefinition ApiKeySecret;
+  /// Custom API endpoint URL (proxies / self-hosted / OpenAI-compatible endpoints)
+  [Id("064ab79f-f451-4ed8-8267-b13862bb5b17"), MaxLength(500)] string? BaseUrl;
+  /// Singleton config name
+  [Id("4db89809-cc78-4658-b466-fe81dcb111b4"), MaxLength(200)] string Name;
+}

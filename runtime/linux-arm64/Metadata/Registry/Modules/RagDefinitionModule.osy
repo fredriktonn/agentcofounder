@@ -1,0 +1,25 @@
+// EmbeddingDefinition lives in the `Osyrin` system namespace (it was `osy.EmbeddingDefinition`).
+
+namespace Osyrin;
+
+/// Embedding model configuration — compiled from embedding: block
+[Id("ba8fd225-6ae9-47c5-b042-f4d6888c5bcd")]
+sealed entity EmbeddingDefinition {
+  /// Vector dimensions for this model
+  [Id("230955ae-f9d0-4ce3-99e5-862d6bc70085")] int Dimensions;
+  /// Model identifier (e.g. text-embedding-3-small)
+  [Id("ff542133-97fe-44d3-b48c-98b1d40c5253"), MaxLength(200)] string? Model;
+  /// OpenAI=0, Google=1, Local=2
+  [Id("6bd34895-7375-4f29-a211-c9fbcbdafaf9")] int Provider;
+  /// Secret containing the API key
+  [Id("7c0b6285-2c3b-4cde-b50c-b7dbff1523bd")] SecretDefinition ApiKeySecret;
+  /// Custom API endpoint URL (proxies / self-hosted / OpenAI-compatible endpoints).
+  ///
+  /// ⭐ THIS IS WHAT MAKES AN EMBEDDING MODEL PLACEABLE — the same field, same length and same meaning as
+  /// `LlmConfig.BaseUrl`, because it answers the same question for the other half of the AI surface. Without it the
+  /// OpenAI endpoint was a `const` in the provider, so an app that had to keep data inside a jurisdiction could
+  /// place its CHAT model and not its EMBEDDINGS — and semantic search is the feature that reads every row.
+  [Id("2ec3ec49-25b1-4f3d-a41c-0e6f2b8b6d17"), MaxLength(500)] string? BaseUrl;
+  /// Block name (e.g. PlatformEmbedding)
+  [Id("73c80980-f70c-4e05-bc66-813e6447a9bb"), MaxLength(200)] string Name;
+}

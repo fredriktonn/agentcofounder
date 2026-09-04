@@ -1,0 +1,56 @@
+/// Groups MCP tools with role-based visibility
+[Id("f423a5a7-ae0d-408c-aa55-85c0726895e0")]
+sealed entity McpToolCatalog {
+  /// Parent MCP configuration
+  [Id("82fcdab7-6962-412b-9f86-b85fa654c35a"), Required] McpConfig McpConfig;
+  /// Tool surface style: 'typed' (per-entity tools, default) or 'polymorphic' (generic entity_type-dispatched tools)
+  [Id("0242bb02-eabc-415f-afd2-d0aa500ec250"), MaxLength(50)] string Style;
+  /// Display name of the catalog
+  [Id("89a8c057-f41f-4a62-a73a-c504050c8005"), MaxLength(255)] string CatalogName;
+  /// Include choice vocabulary tools (list/add/update) for choices marked editable
+  [Id("2abf34ef-e0aa-4a96-aced-c6c9f262f055")] bool ChoiceEditEnabled;
+  /// Include RAG tools (search, add_reference, search_references) in this catalog
+  [Id("cc844726-972e-4233-a35d-75449fea0d49")] bool RagEnabled;
+  /// Filter expression for role-based visibility (e.g. @CurrentUser.Roles CONTAINS 'Editor')
+  [Id("d3678db2-e252-4a27-b075-c07df53310f4"), MaxLength(1000)] string? VisibleTo;
+  /// Description of the catalog
+  [Id("1a12e2d9-c10a-46a9-86d7-20c9fa9f561f"), MaxLength(2000)] string? CatalogDescription;
+  [Id("9e3459db-4c67-4fc6-8ab2-b911b2cb5587"), ForeignKey(Catalog)] McpToolCatalogEntry[] Entries;
+}
+
+/// A tool entry within a catalog — either a function reference or CRUD entity exposure
+[Id("c9bf7a55-81ac-4a98-8c42-b2ca1a676bb1")]
+sealed entity McpToolCatalogEntry {
+  /// Enable aggregate_{Entity} tool
+  [Id("032d495a-6c05-49c3-958b-ff99df6fa61d")] bool CrudAggregate;
+  /// Entity name for CRUD entries
+  [Id("9189b90a-d110-494b-9c8c-a3c501c7c207"), MaxLength(255)] string CrudEntityName;
+  /// Referenced tool definition (for function entries)
+  [Id("239e5793-4974-40ec-b716-8e8f8b7dded7")] ToolDefinition ToolDefinition;
+  /// Enable traverse_{Entity} tool
+  [Id("98c60707-c368-41de-ab84-99ab0ccfc0eb")] bool CrudTraverse;
+  /// Parent catalog
+  [Id("46e6daf8-f05d-4db6-8e83-bfcc2fecd829"), Required] McpToolCatalog Catalog;
+  /// CRUD operation mask (e.g. 'R', 'CRU', 'CRUD'). Null = all
+  [Id("c12c6a9b-da1f-40ef-bae1-485ef2ecfda2"), MaxLength(10)] string? CrudOperations;
+  /// Override description for MCP presentation
+  [Id("b65fd991-a989-4671-9b35-c74210f9d3ea"), MaxLength(2000)] string? DescriptionOverride;
+  /// Enable search_{Entity} tool
+  [Id("0d19fff3-3dbe-46e8-89bc-2d6b721d881b")] bool CrudSearch;
+}
+
+/// MCP server configuration for an application — singleton per app
+[Id("0dd8b0ff-82cd-474f-bad0-6ddbab3c4eb4")]
+sealed entity McpConfig {
+  /// Description of the MCP server (included in server instructions)
+  [Id("6c64a24c-26f7-4a38-a0e2-6cd2b01b6cf7"), MaxLength(2000)] string? McpDescription;
+  /// Comma-separated external OAuth provider names for login page
+  [Id("24a5078c-b0ef-4710-bfe4-898a5d71ac6b"), MaxLength(500)] string? AuthOAuthProviders;
+  /// Accept X-API-Key header authentication
+  [Id("99b74673-75db-4a17-8f84-0ce6b6cae933")] bool AuthApiKey;
+  [Id("f3afa6cf-94f2-474f-87d0-e7dcb58a2041"), ForeignKey(McpConfig)] McpToolCatalog[] Catalogs;
+  /// Enable platform-as-OAuth-server for MCP client authentication
+  [Id("32c887a7-5318-4819-be0a-ab854fba930e")] bool AuthOAuth;
+  /// Accept Bearer token authentication
+  [Id("d72321fe-544c-4704-b78b-eca4ac38178d")] bool AuthBearer;
+}

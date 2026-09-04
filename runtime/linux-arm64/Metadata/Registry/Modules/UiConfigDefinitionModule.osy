@@ -1,0 +1,44 @@
+// The UI-config PMM entity lives in the `Osyrin` system namespace.
+
+namespace Osyrin;
+
+/// The app's UI configuration — compiled from `app.Ui = new AppUi { … }`. A SINGLETON per app (one row). Groups the
+/// app-authored "system surfaces" the platform lets an app own — the branded pages/overlays it would otherwise render a
+/// bare fallback for. Each is optional; an absent one keeps the platform's built-in. The `Ui` block leaves room for
+/// more without a new `app.X` slot each time.
+///
+/// Not read back via the `App` ambient (an app never reads its own `app.Ui` in source) — the SERVER reads it, at page
+/// serve, for the boot descriptor. Mirrors `Osyrin.AuthBootstrapConfig` (a singleton config with `UiComponent` FKs
+/// resolved post-UI, read by a bespoke loader). Each FK need NOT be a routed [Page]: the platform serves/mounts it by
+/// name for its occasion, never a normal navigation.
+[Id("7afab97e-90cb-4d38-8f21-1107f0efae62")]
+sealed entity UiConfig {
+  /// Singleton sentinel name (stable, so the row is non-null and the orphan-sweep can key on it).
+  [Id("4a405646-609a-485e-98fb-9cd914baef73"), MaxLength(100)] string Name;
+  /// The connection-loss surface — the component the client mounts (as a fixed overlay) when the server drops
+  /// mid-session. Optional (absent → the platform's built-in default overlay). Mounted client-side against the
+  /// `Connection` ambient.
+  [Id("c8b3bfbd-b019-452c-b9db-ad6bd96e76d7")] UiComponent ConnectionSurface;
+  /// The not-found (404) surface — the page the server serves (with HTTP 404) when no route matches the requested
+  /// path. Optional (absent → the platform's built-in plain 404). Rendered client-side (secure by default: mark it
+  /// [AllowAnonymous] so a 404 renders for anyone rather than bouncing an anonymous visitor to login).
+  [Id("a85e15c1-2eeb-4a59-a2bf-2d8c617e4e3e")] UiComponent NotFoundSurface;
+  /// The forbidden (403) surface — the page the client mounts when a signed-in user is refused a page they aren't
+  /// permitted to see. Optional (absent → the platform's built-in access-denied surface). Its tree is INLINED into the
+  /// boot shell (so it renders even for a refusal at context-open, before a session exists), so it must be
+  /// self-contained: built-in elements + [Composable] children only, no data.
+  [Id("39009632-1019-4adf-b015-0e8f3b7bf61b")] UiComponent ForbiddenSurface;
+  /// The error surface — the page the client mounts when a page fails to load for an unexpected reason. Optional
+  /// (absent → the platform's built-in "couldn't load" surface). INLINED into the boot shell like ForbiddenSurface (so
+  /// it renders even when the server is flaky), so the same self-contained constraint applies.
+  [Id("c0e13a50-f878-49b5-a376-747ebda90d1a")] UiComponent ErrorSurface;
+  /// D118 — the delay (ms) before a control whose action is in flight shows its busy spinner. A short delay means a fast
+  /// action never flashes one. 0/unset → the client default (200). Config, not authority; rides the public boot descriptor.
+  [Id("834891e7-b0f8-4784-86d4-d3d13b51b556")] int PendingDelayMs;
+  /// D118 — the minimum time (ms) a busy spinner stays visible once shown, so it can't blink off. 0/unset → the client
+  /// default (300).
+  [Id("629c366e-5c20-45f1-a89d-114b1732478a")] int PendingMinShowMs;
+  /// D118 — an app's own spinner component, used inside a pending control instead of the platform's default `.osy-spinner`.
+  /// Optional (absent → the default). A tiny self-contained [Composable] (it mounts inside any pressed control).
+  [Id("d1f71d3d-5f9c-41d2-91ed-d8fb4c628b49")] UiComponent PendingIndicator;
+}

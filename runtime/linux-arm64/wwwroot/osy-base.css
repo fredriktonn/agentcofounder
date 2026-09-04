@@ -1,0 +1,482 @@
+/* Osy# base primitive styles (U5b-1). The platform's few native atoms get their layout defaults + sensible resets
+ * here; a component's design tokens and variant recipe layer ON TOP (U5b-2/3, generated per app). Served static at
+ * /osy-base.css and linked from the boot shell BEFORE the per-app /_osy/app.css, so a variant class (same specificity,
+ * later in the cascade) always wins over these defaults. Class names mirror the atom: an atom <Name> renders
+ * <tag class="osy-name">.
+ *
+ * WELL-KNOWN TOKENS: the page chrome + control defaults read a small set of semantic color tokens with fallbacks —
+ * an app that declares them (as `theme { Colors { Bg = …; OnBg = …; Surface = …; Border = …; Muted = …; } }`, with
+ * a Light/Dark mode map) themes the whole page, including dark mode; an app that doesn't gets sensible neutrals. */
+
+:root { color-scheme: light dark; }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+html, body { margin: 0; }
+body {
+  min-height: 100vh;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  background: var(--colors-bg, #f6f7f9);
+  color: var(--colors-onbg, #16181d);
+}
+/* The mount host. MECHANISM ONLY: it fills the viewport so a layout can build a full-height app shell (a fixed rail,
+ * a sticky header, a drawer). It sets no measure, no gutter and no centering — a reading-width column is the APP's
+ * policy, expressed as ordinary style props on its own root (`MaxW = 672; Mx = "auto";`), never something every
+ * e-commerce, marketing or LOB page has to undo. */
+#app { display: flex; flex-direction: column; min-height: 100vh; }
+
+.osy-stack, .osy-row, .osy-box, .osy-text, .osy-button, .osy-pressable, .osy-input, .osy-textarea, .osy-image, .osy-link {
+  box-sizing: border-box;
+  /* Width 0 (no border until a variant asks), style solid, colour the theme's Border token. So a variant that sets
+   * only `BorderW = 1` gets a solid, theme-coloured hairline, and `Border = <token>` recolours it — neither has to
+   * restate the other two. `.osy-input`/`.osy-button` below set their own `border` and win by later cascade. */
+  border: 0 solid var(--colors-border, #d7dbe0);
+}
+
+/* A layout's child-route mount point. The router mounts the matched page inside it, so it must not collapse: it
+ * fills the space the layout gave it (a shell's content column). Contents are the router's, not the layout's. */
+.osy-outlet { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+
+/* A RETAINED route inside an outlet (`Outlet(retain: …)`): exactly one is visible, the rest stay mounted but hidden,
+ * so their DOM, state and unsaved edits survive. The [hidden] rule must out-specify the layout rule above it. */
+.osy-route { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.osy-route[hidden] { display: none; }
+
+/* Layout primitives — the fix for the old "everything on one row" look: Stack is a column, Row is a row. */
+.osy-stack { display: flex; flex-direction: column; }
+.osy-row { display: flex; flex-direction: row; align-items: center; }
+.osy-box { display: block; }
+
+/* D273 — A DEFINITE MAIN-AXIS SIZE ON A FLEX CHILD HOLDS.
+ *
+ * `Stack(h: 150, overflowY: Auto) { Box(h: 2000) }` — the most obvious way to write "something to scroll" — did not
+ * scroll: a flex child shrinks to fit by default, so the 2000 the author wrote was not the height the child got, and
+ * `scrollHeight` equalled `clientHeight`. That shape sat in this repo's own /scroll fixture for as long as scroll
+ * bindings have existed, and happy-dom could not see it (no layout engine); a real browser found it on the visual
+ * gate's first run.
+ *
+ * Correct CSS, and unhelpful: `flex-shrink: 1` is the initial value and `shrink: 0` is spellable — 31 times across 8
+ * files in this repo, most nowhere near a scroll container (a 10x10 legend swatch, a 52px tick gutter, a kanban lane
+ * whose own comment calls the prop load-bearing). An author who writes a number has said what they mean.
+ *
+ * WHY IT LIVES HERE rather than in either renderer: "is this the main axis?" is a question about the PARENT, and the
+ * child emitting its own style cannot answer it. The child marks only what it knows — "I was given a definite width"
+ * / "…height" — and the parent's own class picks the one that means main axis. No runtime logic, identical under SSR
+ * and CSR, and it cannot drift between them.
+ *
+ * ⚑ THE ESCAPE HATCH NEEDS NO CODE: `shrink: 1` lowers to an INLINE style, which beats any class selector. So the
+ * default moves and nothing becomes unreachable, which is exactly the trade the ledger (D273) accepted. */
+.osy-row > .osy-w-fixed { flex-shrink: 0; }
+.osy-stack > .osy-h-fixed { flex-shrink: 0; }
+
+/* An icon (D28). Size + color are CSS, never props: it is an em square that inherits the current text color, so an
+ * icon beside a label matches it at any font size and follows the theme through light and dark for free. `fill` is
+ * set on the <svg> as the DEFAULT for children that declare no paint; the sanitizer already rewrote every concrete
+ * `fill`/`stroke` to `currentColor` and preserved `fill="none"`, so an outline icon stays an outline. `stroke` is
+ * deliberately NOT set here: inheriting a stroke would paint a 1px outline around every SOLID icon. A variant recipe
+ * can still resize it (`W`/`H`/`FontSize`) or recolor it (`Color`) like any other element. */
+.osy-icon {
+  display: inline-block;
+  width: 1em; height: 1em;
+  flex: none;                 /* never squashed by a flex Row */
+  fill: currentColor;
+  vertical-align: -0.125em;   /* optically centre against the text baseline */
+}
+
+/* D102 — a raw-SVG ASSET (`Svg(name)`): a wrapper whose inlined <svg> fills it, so the asset scales to the box the
+ * atom's style props (position/inset/width/height) give it. Unlike .osy-icon this does NOT recolor — an asset keeps its
+ * own fills/gradients/patterns. `block` + 100%/100% lets a full-bleed background (position: Absolute; inset: 0) cover
+ * its positioned parent; a sized asset (an inline logo) constrains it with W/H instead. */
+.osy-svg-asset { display: block; line-height: 0; }
+.osy-svg-asset > svg { display: block; width: 100%; height: 100%; }
+
+/* C4/P4 — a rendered markdown document (`Markdown(text)`). The atom ships no look of its own beyond FLOW: every
+ * value below resolves through the app's design tokens, so a document reads in the app's own voice and follows it
+ * through light and dark.
+ *
+ * TWO TIERS, and the order matters. Each property reads its OWN `Markdown` token first and falls back to the app's
+ * semantic token, then to a literal:
+ *
+ *     var(--colors-markdown-link, var(--colors-primary, #4f46e5))
+ *
+ * So an app that declares nothing still looks coherent (it inherits Primary); an app that sets `Colors { Primary }`
+ * moves the links with everything else; and an app that wants the DOCUMENT to differ says so without disturbing the
+ * rest — `theme { Colors { Markdown { Link = "#B45309"; } } }`, which lowers to `--colors-markdown-link` because a
+ * NESTED group namespaces within its category (the M52 mechanism the editor's menu metrics already use).
+ *
+ * The whole default chain is written ONCE, at the point of use. Deriving an internal token here and then giving the
+ * consumer its own fallback would put the default in two places, and the second one would never apply — fixing it
+ * would look like it worked and change nothing. */
+.osy-markdown { line-height: var(--length-markdown-lineheight, 1.65); }
+.osy-markdown > :first-child { margin-top: 0; }
+.osy-markdown > :last-child { margin-bottom: 0; }
+.osy-markdown h1, .osy-markdown h2, .osy-markdown h3,
+.osy-markdown h4, .osy-markdown h5, .osy-markdown h6 {
+  font-family: var(--fonts-markdown-headingface, var(--fonts-heading, inherit));
+  font-weight: var(--fontweight-markdown-headingweight, 600);
+  line-height: var(--length-markdown-headinglineheight, 1.25);
+  margin: var(--space-markdown-headingtop, 1.6em) 0 var(--space-markdown-headingbottom, 0.6em);
+}
+/* An OPT-IN rule closing the TITLE AREA (`Colors { Markdown { HeadingRule } }`). Not a default: it suits a long
+ * document and is heavy-handed on a chat reply or a short prose field, and turning it on globally would restyle
+ * every document already rendered by this atom.
+ *
+ * THE LEADING h1 ONLY — `> h1:first-child`. This was first built as "every h1", on a misreading of what a document
+ * tool was doing: the line in Craft is its document-TITLE separator, chrome between the title field and the body,
+ * not heading styling. A test document with two body `h1`s has a line under neither. Ruling every `h1` would put a
+ * line under each section of a multi-part document, which is a different feature nobody asked for — and one that
+ * also competes with a `---` thematic break the author actually wrote (the theme's opinion vs the document's
+ * content). A document that does not open with an `h1` gets no rule, which is correct: it has no title area.
+ *
+ * `HeadingRuleGap` is what makes the line close the title area rather than underline the words.
+ *
+ * ⚠ Both declarations deliberately have NO fallback, and that is what makes "opt-in" honest rather than
+ * approximate. An unset `var()` makes the whole declaration invalid at computed-value time, which resolves to the
+ * property's INITIAL value — `border-bottom: none`, `padding-bottom: 0`. So an app that sets no token gets a
+ * document that is byte-identical to the one it had. Writing `var(--token, transparent)` instead would paint
+ * nothing and still consume a pixel of layout on every heading in the platform.
+ *
+ * `HeadingRuleGap` is separate because it is a real choice, not a constant: flush under the text reads tighter and
+ * more editorial, a gap reads more like GitHub. Absent means flush. */
+.osy-markdown > h1:first-child {
+  border-bottom: var(--length-markdown-headingrulew, 1px) solid var(--colors-markdown-headingrule);
+  padding-bottom: var(--space-markdown-headingrulegap);
+}
+.osy-markdown h1 { font-size: var(--fontsize-markdown-h1, 1.9em); }
+.osy-markdown h2 { font-size: var(--fontsize-markdown-h2, 1.5em); }
+.osy-markdown h3 { font-size: var(--fontsize-markdown-h3, 1.22em); }
+.osy-markdown h4, .osy-markdown h5, .osy-markdown h6 { font-size: var(--fontsize-markdown-h4, 1em); }
+.osy-markdown p, .osy-markdown ul, .osy-markdown ol, .osy-markdown pre, .osy-markdown table {
+  margin: 0 0 var(--space-markdown-block, 1em);
+}
+.osy-markdown ul, .osy-markdown ol { padding-inline-start: var(--space-markdown-listindent, 1.4em); }
+.osy-markdown li { margin: var(--space-markdown-itemgap, 0.2em) 0; }
+/* A task item's checkbox sits in the text flow, so the marker would double it up. The negative indent must track
+ * the list indent, or a themed indent detaches the checkbox from its text. */
+.osy-markdown li.task { list-style: none; margin-inline-start: calc(-1 * var(--space-markdown-listindent, 1.4em)); }
+.osy-markdown li.task > input { margin-inline-end: 0.15em; }
+.osy-markdown a {
+  color: var(--colors-markdown-link, var(--colors-primary, #4f46e5));
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+.osy-markdown img { max-width: 100%; height: auto; }
+.osy-markdown hr {
+  border: 0;
+  border-top: 1px solid var(--colors-markdown-rule, var(--colors-border, #d7dbe0));
+  margin: var(--space-markdown-rulegap, 2em) 0;
+}
+.osy-markdown blockquote {
+  margin: 0 0 var(--space-markdown-block, 1em);
+  padding: 0.1em 0 0.1em var(--space-markdown-quotepad, 1em);
+  border-inline-start: var(--length-markdown-quotebarw, 3px) solid
+    var(--colors-markdown-quotebar, var(--colors-border, #d7dbe0));
+  color: var(--colors-markdown-quotetext, var(--colors-textmuted, inherit));
+}
+/* GFM alerts — `> [!NOTE]` and its four siblings. A <div>, not a styled <blockquote>: a quote means "someone else
+ * said this" and an alert means "the author is raising their voice", and assistive technology announces the two
+ * differently.
+ *
+ * ONE accent per kind drives the bar, the title and the tint, so an app restyles a whole kind by setting a single
+ * token. The tint is MIXED from that accent into the app's own surface rather than hard-coded, which is what makes
+ * a themed accent bring its own background with it — and what keeps these readable on a dark surface without a
+ * second set of colours to maintain. Accent defaults are chosen to clear 3:1 against both a white and a near-black
+ * surface, which a bold title needs. */
+.osy-markdown .osy-md-alert {
+  margin: 0 0 var(--space-markdown-block, 1em);
+  padding: var(--space-markdown-alertpad, 0.8em 1em);
+  border-inline-start: var(--length-markdown-alertbarw, 3px) solid var(--osy-md-alert-accent);
+  border-radius: var(--radius-markdown-blockradius, var(--radius-md, 8px));
+  background: color-mix(in oklch, var(--osy-md-alert-accent) 8%, var(--colors-surface, transparent));
+}
+/* The box owns its padding, so the last child must not add a trailing gap inside it. */
+.osy-markdown .osy-md-alert > :last-child { margin-bottom: 0; }
+.osy-markdown .osy-md-alert-title {
+  margin: 0 0 var(--space-markdown-alerttitlegap, 0.35em);
+  color: var(--osy-md-alert-accent);
+  font-weight: var(--fontweight-markdown-alerttitle, 600);
+}
+.osy-markdown .osy-md-alert-note      { --osy-md-alert-accent: var(--colors-markdown-alertnote, #2f81f7); }
+.osy-markdown .osy-md-alert-tip       { --osy-md-alert-accent: var(--colors-markdown-alerttip, #1a7f37); }
+.osy-markdown .osy-md-alert-important { --osy-md-alert-accent: var(--colors-markdown-alertimportant, #8957e5); }
+.osy-markdown .osy-md-alert-warning   { --osy-md-alert-accent: var(--colors-markdown-alertwarning, #bf8700); }
+.osy-markdown .osy-md-alert-caution   { --osy-md-alert-accent: var(--colors-markdown-alertcaution, #e5534b); }
+.osy-markdown code {
+  font-family: var(--fonts-markdown-codeface, var(--fonts-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace));
+  font-size: var(--fontsize-markdown-codesize, 0.9em);
+}
+/* An inline code span is tinted; a code BLOCK is not, because its <pre> already carries the surface. */
+.osy-markdown :not(pre) > code {
+  background: var(--colors-markdown-codebg, var(--colors-muted, #eceef2));
+  border-radius: var(--radius-markdown-coderadius, var(--radius-sm, 4px));
+  padding: 0.12em 0.35em;
+}
+.osy-markdown pre {
+  background: var(--colors-markdown-codebg, var(--colors-muted, #eceef2));
+  border-radius: var(--radius-markdown-blockradius, var(--radius-md, 8px));
+  padding: var(--space-markdown-codepad, 0.9em 1em);
+  /* A long line scrolls INSIDE the block; the page itself must never scroll sideways because of a code sample. */
+  overflow-x: auto;
+}
+/* M99 — the per-code-block copy affordance (`Markdown(text, copyIcon:, copyTooltip:)`). Present only when the app
+   opted in; an inert document never gets any of this markup, so none of these rules can match.
+   The WRAPPER is what the button positions against: the <pre> itself scrolls (overflow-x above), and a button
+   positioned inside a scroll container drifts off the moment a line is wide enough to scroll — which is exactly the
+   block someone wants to copy. */
+.osy-markdown .osy-md-codeblock { position: relative; margin: var(--space-markdown-block, 1em) 0; }
+/* The wrapper now owns the block's margin, so the <pre> inside it must not add a second one. */
+.osy-markdown .osy-md-codeblock > pre { margin: 0; }
+.osy-md-copy {
+  position: absolute;
+  top: var(--space-markdown-copyinset, 0.5em);
+  inset-inline-end: var(--space-markdown-copyinset, 0.5em);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3em;
+  border: 1px solid var(--colors-markdown-copyborder, var(--colors-border, #d7dbe0));
+  border-radius: var(--radius-markdown-coderadius, var(--radius-sm, 4px));
+  background: var(--colors-markdown-copybg, var(--colors-surface, #fff));
+  color: var(--colors-markdown-copyicon, var(--colors-textmuted, inherit));
+  cursor: pointer;
+  /* Revealed on hover or keyboard focus. NOT `display: none` when idle — a hidden button is unreachable by tab, and
+     `:focus-visible` below is what brings it back for anyone not using a mouse. */
+  opacity: 0;
+  transition: opacity 120ms ease-in-out;
+}
+.osy-markdown .osy-md-codeblock:hover .osy-md-copy,
+.osy-md-copy:focus-visible { opacity: 1; }
+/* Touch has no hover, so the affordance would never appear at all — show it permanently there instead. */
+@media (hover: none) { .osy-md-copy { opacity: 1; } }
+.osy-markdown table { border-collapse: collapse; display: block; overflow-x: auto; max-width: 100%; }
+.osy-markdown th, .osy-markdown td {
+  border: 1px solid var(--colors-markdown-tableborder, var(--colors-border, #d7dbe0));
+  padding: var(--space-markdown-cellpad, 0.45em 0.7em);
+  text-align: start;
+}
+.osy-markdown th {
+  background: var(--colors-markdown-tableheadbg, var(--colors-muted, #eceef2));
+  font-weight: var(--fontweight-markdown-tableheadweight, 600);
+}
+
+/* Content + control resets so an atom inherits type and behaves predictably before any variant styles it. */
+.osy-text { }
+.osy-image { display: block; max-width: 100%; height: auto; }
+.osy-link { color: inherit; text-decoration: none; }
+
+/* A sensible default input: padded, bordered, rounded, surface-colored — a variant can still restyle it.
+ *
+ * ⚠ THE TEXTAREA BELONGS IN EVERY ONE OF THESE RULES, not just the last. A browser gives `<textarea>` a MONOSPACE
+ * font and a focus ring of its own, so a multiline field left out of `font: inherit` renders in a different typeface
+ * from every other control on the page — which is what it did the first time it was shipped. It is the same kind of
+ * control as the input; only its height story differs. */
+.osy-input, .osy-textarea {
+  font: inherit;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--colors-border, #d7dbe0);
+  border-radius: 8px;
+  background: var(--colors-surface, #ffffff);
+  color: inherit;
+}
+.osy-input:focus, .osy-textarea:focus { outline: 2px solid var(--colors-primary, #4f46e5); outline-offset: 1px; }
+/* A field that fails its MODEL's rules (D71). The rules ride in from the entity as native attributes (required /
+ * pattern / maxlength / min / max), so the browser judges the value and this paints the verdict — themed by the app's
+ * own token, exactly like the border and focus ring above. `:user-invalid` (not `:invalid`) so a blank required field
+ * is not red before it has been touched. An app that wants a different look overrides it with an `Invalid { … }` state
+ * in its variants — the platform's default here is the same kind of sensible default as the input's border itself. */
+.osy-input:user-invalid, .osy-textarea:user-invalid { border-color: var(--colors-borderdanger, #e24b4a); }
+
+/* The textarea's own two: it sizes by `rows`, and it may be dragged TALLER but never wider — a horizontal resize
+ * lets a person pull a field out past the card that contains it, which no app wants and every app would otherwise
+ * have to disable itself. */
+.osy-textarea { resize: vertical; display: block; }
+
+/* A sensible default button (neutral); a variant recipe (e.g. a Primary tone) overrides via the later cascade. */
+.osy-button {
+  font: inherit;
+  cursor: pointer;
+  padding: 0.5rem 0.9rem;
+  /* Width zero, style solid — the shared reset's form. A bare `border: 0` sets `border-style: none`, and a variant
+     recipe that then sets only `BorderW = 1` computes to 0px and draws nothing. See BaseCssBorderResetTests. */
+  border: 0 solid var(--colors-border, #d7dbe0);
+  border-radius: 8px;
+  background: var(--colors-muted, #eceef2);
+  color: inherit;
+}
+.osy-button:hover { filter: brightness(0.97); }
+.osy-button:active { filter: brightness(0.94); }
+
+/* Pressable is the ZERO-OPINION "make this clickable" primitive — a bare interactive wrapper the app styles itself (a
+   composed Btn/BtnPrimary supplies the look). It imposes NO background, padding, or radius of its own; a default gray
+   button chrome here is a platform UI opinion that doesn't belong on the mechanism. Only the interaction reset stays. */
+.osy-pressable {
+  font: inherit;
+  cursor: pointer;
+  /* ⚠ WIDTH ZERO, STYLE SOLID — never the bare `border: 0`, which is what this said. The shorthand sets STYLE too,
+     so `border: 0` left `border-style: none`, and a variant setting only `BorderW = 1` then computed to 0px: width
+     applied, style still none, nothing drawn. That silently broke the kit's DEFAULT button tone, whose whole
+     affordance is its hairline — measured on eval run 253, `.osy-c-button--tone-default` emitted `border-width: 1px`
+     and the button rendered white-on-white with no edge, in every app. Same specificity as the rule above, later in
+     the file, so this won. Matches the shared reset on line 34 and the contract stated in UiStylePropCss. */
+  border: 0 solid var(--colors-border, #d7dbe0);
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  text-align: inherit;
+}
+
+/* The DISABLED affordance FLOOR (D85). A control bound `disabled: <bool>` carries the native `disabled` attribute (the
+   browser already blocks its events); this makes "unavailable" READ visually so it is never silently inert — a dimmed,
+   not-allowed control. This is MECHANISM (an accessibility affordance), not chrome: like every base style it loads
+   BEFORE the per-app variant CSS, so an app that wants a specific disabled look overrides it per-control with a
+   `disabled { … }` pseudo-state variant (which wins by later cascade). Opacity dims the whole subtree, so a composed
+   button (a BtnPrimary inside a disabled Pressable) dims with it. */
+.osy-button:disabled, .osy-pressable:disabled, .osy-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* The BUSY affordance FLOOR (D118). A control whose action is in flight shows this spinner after a short delay (so a
+   fast action never flashes one) — the "something is happening" the app never has to wire. MECHANISM, not chrome: it
+   sizes to the control's text (1em, currentColor), sits beside the label, and loads before per-app CSS so an app can
+   override it (or supply `app.Ui.PendingIndicator`). The delay/min-show timing lives in the client runtime. */
+@keyframes osy-spin { to { transform: rotate(360deg); } }
+.osy-spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-inline-start: 0.45em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -0.15em;
+  animation: osy-spin 0.6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) { .osy-spinner { animation-duration: 1.6s; } }
+
+/* ── M97: a document that is still ARRIVING ──────────────────────────────────────────────────────────────────────
+ * `Markdown(text, streaming: true)` stamps `data-osy-streaming` on the wrapper; everything below is driven by that
+ * one attribute. No DOM node is created for the caret and no class is put on a block for the fade, deliberately:
+ * both would have to be cleaned up, and a class that outlives its own animation makes the element's markup differ
+ * from a fresh render of the same text.
+ *
+ * Every value is a theme token with a fallback — the same three-tier chain the rest of the document uses (M66) — so
+ * an app sets them with `theme { Colors { Markdown { Caret = "#f00"; } } }` and never has to override a rule.
+ */
+
+/* The caret sits at the end of the LAST block, which is where the text is being written. `::after` on the last
+ * child puts it exactly there with no node to place, move or remove as blocks open and close. */
+.osy-markdown[data-osy-streaming] > *:last-child::after {
+  content: "";
+  display: inline-block;
+  width: var(--length-markdown-caretwidth, 0.5em);
+  height: var(--length-markdown-caretheight, 1.05em);
+  margin-inline-start: var(--space-markdown-caretgap, 0.12em);
+  vertical-align: text-bottom;
+  border-radius: var(--radius-markdown-caretradius, 1px);
+  background: var(--colors-markdown-caret, currentColor);
+  opacity: 0.75;
+  animation: osy-md-caret var(--motion-markdown-caretblink, 1.05s) steps(1, end) infinite;
+}
+
+/* A caret inside a code block belongs on the code line, not below it. */
+.osy-markdown[data-osy-streaming] > pre:last-child::after { display: none; }
+.osy-markdown[data-osy-streaming] > pre:last-child > code::after {
+  content: "";
+  display: inline-block;
+  width: var(--length-markdown-caretwidth, 0.5em);
+  height: var(--length-markdown-caretheight, 1.05em);
+  vertical-align: text-bottom;
+  background: var(--colors-markdown-caret, currentColor);
+  opacity: 0.75;
+  animation: osy-md-caret var(--motion-markdown-caretblink, 1.05s) steps(1, end) infinite;
+}
+
+@keyframes osy-md-caret { 0%, 50% { opacity: 0.75; } 50.01%, 100% { opacity: 0; } }
+
+/* A block that has just ARRIVED fades in. `@starting-style` animates from the state an element had when it was
+ * inserted, so this needs no class, no listener and no cleanup — the DOM is untouched. Only blocks inserted while
+ * the container is streaming animate; a settled document and a static render never do. */
+@supports (transition-behavior: allow-discrete) {
+  .osy-markdown[data-osy-streaming] > * {
+    transition: opacity var(--motion-markdown-fadein, 220ms) ease-out;
+  }
+  @starting-style {
+    .osy-markdown[data-osy-streaming] > * { opacity: 0; }
+  }
+}
+
+/* Someone who has asked for less motion gets a steady caret and no fade — the content is identical either way. */
+@media (prefers-reduced-motion: reduce) {
+  .osy-markdown[data-osy-streaming] > *:last-child::after,
+  .osy-markdown[data-osy-streaming] > pre:last-child > code::after { animation: none; }
+  .osy-markdown[data-osy-streaming] > * { transition: none; }
+}
+
+/* ── The REFUSED-ACTION surface (D-FAILSURFACE) ──────────────────────────────────────────────────────────────────
+ * `buildFailureSurface` in the client walker exists because a refused action used to move nothing on screen — "23
+ * of 24 apps got this wrong, which is what a missing default looks like from the outside". It shipped with the
+ * `osy-` classes an app restyles through, and with NO RULE FOR THEM ANYWHERE: measured 2026-08-26 in real Chromium,
+ * the refusal rendered as bare text pinned to the bottom-left of the viewport beside a browser-default `Dismiss`.
+ * So the affordance built to stop "the user sees nothing" delivered "the user sees something broken" — one step
+ * along the same failure, and invisible to every text assertion, because the words were all present and findable.
+ *
+ * ⚑ It is MECHANISM, like `.osy-spinner` above: it loads BEFORE per-app CSS, so an app overrides any of it, and an
+ * app that binds `Failure.*` never renders this at all. Every value is a theme token with a fallback (the M66
+ * three-tier chain), so a themed app inherits its own palette without writing a rule.
+ *
+ * ⚠ The reason this got urgent: `[Required]` on a string now refuses a BLANK field rather than accepting it, so
+ * every empty form box in every app arrives here. A path nobody could reach was allowed to look like this. */
+.osy-action-failed {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 2147483000;              /* above app chrome; below nothing that matters more than a refusal */
+  margin: 0 auto;
+  max-width: min(40rem, calc(100vw - 2rem));
+  margin-block-end: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--length-radius-md, 8px);
+  border: 1px solid var(--colors-danger, #b42318);
+  background: var(--colors-surface, #fff);
+  color: var(--colors-text, #101828);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+  font: inherit;
+  font-size: 0.9375rem;
+  line-height: 1.4;
+}
+
+.osy-action-failed-message { flex: 1 1 auto; min-width: 0; }
+
+/* The id to paste into `osy logs --correlation <id>`. Present but quiet — it is for reporting, not reading. */
+.osy-action-failed-correlation {
+  flex: 0 0 auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75em;
+  opacity: 0.6;
+  user-select: all;                 /* one click selects the whole id */
+}
+
+.osy-action-failed-dismiss {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--length-radius-sm, 6px);
+  border: 1px solid var(--colors-border, #d0d5dd);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.875em;
+  cursor: pointer;
+}
+.osy-action-failed-dismiss:hover { background: var(--colors-bg, #f2f4f7); }
+
+@media (prefers-reduced-motion: no-preference) {
+  @supports (transition-behavior: allow-discrete) {
+    .osy-action-failed { transition: opacity 160ms ease-out, translate 160ms ease-out; }
+    @starting-style { .osy-action-failed { opacity: 0; translate: 0 0.5rem; } }
+  }
+}

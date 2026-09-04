@@ -1,0 +1,363 @@
+/// A node in an Osy# expression tree (D-Q1). Operators and identifiers are typed FKs into metadata (RefName dropped — truth in metadata; the decompiler regenerates names), so renames stay safe. Owned by an ExpressionRoot and ordered by Ordinal among siblings. ⚠ ITS TABLE IS EMPTY BY DESIGN AND STAYS THAT WAY (M238 phase 4). A node is never persisted as a row: the emitter builds it, it is serialized into its root's `Compiled` document, and it is read back out of that. What this declaration still does — and it is load-bearing — is DESCRIBE those rows: the document stores each column by name and converts it back by the kind declared here, which is what makes the round trip exact rather than a guess from what the JSON looks like. The same is true of ExpressionBinding, ExpressionBindingType and ExpressionIncludeHop. ⚑ That the table exists at all is the one thing left over: the platform has no way to say "a row SHAPE with identity, stored inside its owner" — an Osy# `class` is the nearest thing and refuses both the `[Id]` pins and the relations, correctly, because a class is a value with no identity. See the arc ledger.
+[Id("b01cea8d-0ea7-45b3-9dde-94cb99f86e39")]
+class ExpressionNode {
+  /// Effect node: the ExecutionSide (Server|Client|Either) — the seamless client/server split (§7.1). Derived from Kind (OsySharpExecutionSides.Of), never spelled in source. Null/0 (Server) for non-effect nodes
+  [Id("d5e4781e-b6b5-4fda-b8e1-5485f1390aee")] int Side;
+  /// Parent node; null at the tree root
+  [Id("4253a452-0512-4c48-8158-fadb9aed75d3")] ExpressionNode Parent;
+  /// Literal: the value type — ExpressionLiteralType String|Int|Decimal|Bool|DateTime|Null
+  [Id("964ff14e-43a6-49d4-9658-53c156a708d2")] int LiteralType;
+  /// Member: the typed target property (truth in metadata)
+  [Id("787fbd86-936a-446a-b749-5a2b4bfeb77f")] PropertyMetadata RefProperty;
+  /// Projection column: the output column name for a grouped/anonymous projection's column node (g => new { Revenue = … }). Named [Virtual] columns reuse the alias-as-name to map to the projection entity's property; anonymous projections persist their alias here (Q-P5-1)
+  [Id("d3d0aeb6-66a0-42ea-b33f-8adbf8c32dac"), MaxLength(100)] string? ProjectionAlias;
+  /// FunctionValue node: the names this lambda CAPTURES from its enclosing scope, space-joined in the order its capture children follow the body child (an identifier can hold neither a space nor an empty value, so the join is unambiguous). Null/empty for the overwhelmingly common non-capturing lambda. Its own column rather than a second meaning for ProjectionAlias (which already carries the PARAMETER names) — one column, one fact, so a reader never has to know which shape it is looking at.
+  [Id("ca97c0de-7e11-4d3a-9a2b-6f0e5c1b3a44"), MaxLength(400)] string? CaptureNames;
+  /// ObjectMember node: the member's name in an anonymous object literal (`new { a = 1 }` → "a"). An anonymous member names a KEY in a document, not a property of any declared type, so RefProperty (a PropertyMetadata FK) has nothing to point at — and its own column rather than a second meaning for ProjectionAlias, for the reason stated on CaptureNames just above.
+  [Id("190ca148-89ee-4a9d-801f-505f45df48e8"), MaxLength(100)] string? MemberName;
+  /// New / ConstructorCall node: the constructed value's TYPE ARGUMENTS as source text, comma-joined (`Report`, or `decimal, string`). Null for the ordinary non-generic construction. Without it a `new Box<Report>` reloads as a bare `Box`, and every later read off it substitutes against nothing — `b.Value` comes back as the type PARAMETER `T`, which has no properties, so reading `b.Value.Title` fails at LOAD time on a body the compiler accepted. TEXT rather than an FK for the reason the whole open-type direction is text: an argument may be a scalar (`Box<decimal>`), which has no metadata row to point at. Its own column rather than a second meaning for ProjectionAlias, for the reason stated on CaptureNames above.
+  [Id("7c1f4b52-3e08-4a6d-9b21-0d5a8e6f2c77"), MaxLength(400)] string? TypeArgs;
+  /// VarDecl node: true when the initializer is an awaited effect/query (the name binds an action result, not a pure value) — mirrors ResolvedVarDecl.IsEffect
+  [Id("baabbcd1-a06d-4295-a617-0113900ab4b4")] bool IsEffect;
+  /// VarDecl node: the local was declared `const T name = value;` — mirrors ResolvedVarDecl.IsConst. The resolver folds the initializer and inlines it at every use, so a const local is INERT at runtime and exists in the tree only so the statement shape round-trips. That purpose was silently defeated: the reload defaulted it to false, so `const` came back as `var` — the one thing the field is for. Found by the reflective structural gate (friction X-1)
+  [Id("84f95113-ac45-4161-814d-5d74f9e78d4e")] bool IsConst;
+  /// VarDecl node: the source wrote `var`, so the type is INFERRED rather than declared — mirrors ResolvedVarDecl.IsInferred. Distinguishes `var x = 5;` from `int x = 5;`, which resolve to the same binding and differ only in how they were WRITTEN. The decompiler needs it to regenerate the author's spelling, and the editor to decide whether an inlay type hint is informative or noise. Also dropped by the reload until X-1
+  [Id("3d28d1ad-c48a-43c5-8609-59b33a864607")] bool IsInferred;
+  /// Assert node (function body, D19): the AssertKind (Equal|NotEqual|True|False|Null|NotNull); operands are children. The failure message regenerates from the operands at decompile (no SourceText carrier)
+  [Id("b95c3f02-c65c-4ba9-a1e3-e0d2ba319d95")] int AssertKind;
+  /// Call: a sub-function / template-function call target (CallKind=Function) — a typed FK, not a string
+  [Id("487c0bee-772e-4b0c-82fa-0a7b716e6fbc")] Function CallFunction;
+  /// Call arg node: the callee PARAMETER NAME this argument child binds to (Call child). Persists the position→name binding so a named argument that skips an omitted middle optional re-binds to the right parameter at load (not positionally), and the decompiler renders it named only when it must. Null for non-arg nodes.
+  [Id("ca11a460-a1b2-4c3d-8e4f-0123456789ab"), MaxLength(100)] string? CallArgParam;
+  /// Embedded sub-query node: the element entity type the hop ranges over (e.g. Share) — the guaranteed-recoverable FK, mirroring ExpressionRoot.SelfEntityType for the top-level query. P5-5.
+  [Id("022bd418-2c4a-4d94-9ed6-877993b17928")] EntityMetadata QueryElement;
+  /// [[H-74]] — the node's mutable-collection type as a RECURSIVE ExpressionBindingType descriptor, written when the three flat columns (CollectionKind + ElementType/QueryElement + ValueType/TargetEntityType) cannot describe it: a `new Dictionary<string, List<decimal>>()`, a `List<List<int>>`. Same descriptor a BINDING and (since H-74) a ROOT use, deliberately — three flat descriptions of one concept is the drift this file keeps paying for, and a fourth pair of columns would buy one more nesting level and fail on the next. Null on almost every node
+  [Id("9f5a3c26-71d8-4b03-8e5f-2d90c4a1eb77")] ExpressionBindingType CollectionTypeRef;
+
+  /// M182 — the element's ANONYMOUS ROW SHAPE, when the hop ranges over the rows of a `new { … }` projection rather than over an entity. Such a row type is synthesized from its own columns and is IN-MEMORY AND UNPERSISTED (D-ANONROW), so there is no EntityMetadata row for QueryElement to point at: writing the FK anyway persisted an id nothing could resolve, and the tree then failed to LOAD with "Query node … element … not found" — a page that compiled clean and 500'd on serve. Mirrors ExpressionBinding.RowShape / ExpressionBindingType.RowShape, which have carried exactly this for a binding since anonymous rows existed; the query NODE simply never got one. Set INSTEAD of QueryElement, never beside it.
+  [Id("837b6269-d4ca-4de7-a380-9b829614ff1c"), MaxLength(2000)] string? RowShape;
+  /// The owning tree (scope + GC root + D18 batch-load key) — replaces the legacy Function FK
+  [Id("9e4b501f-bdac-40af-8a15-2ae7f5a4a766"), Required] ExpressionRoot Root;
+  /// ExpressionNodeKind: Literal|Var|Param|Member|Index|Unary|Binary|Logical|Conditional|Coalesce|Call|Lambda|Collection|ChoiceRef|New|Projection|GroupBy|Aggregate|OrderKey|Query|Traverse|IsNull|EnumRef
+  [Id("877f029d-031d-44e8-a200-283193447d64")] int Kind;
+  /// Embedded sub-query node (Kind=Query nested in a predicate/value, e.g. `Shares.Any(s => …)` -> correlated EXISTS, `o.Lines.Count(l => …)` -> scalar subquery): the ResolvedQueryOp (Exists|Count). Query shape lives on the NODE for an embedded hop (the top-level query carries it on ExpressionRoot). P5-5.
+  [Id("72e8d257-5b88-4abd-b2bc-e59a59d8fc3f")] int QueryOp;
+  /// Effect node: the entity TYPE this effect targets/constructs — the constructed type of a `new T { … }` (New), or the target of an entity-typed effect. A typed FK, not a string
+  [Id("46507094-0ea4-43f4-adca-8536ef043a6f")] EntityMetadata TargetEntityType;
+  /// Member shape: this (name-only) member evaluates to a COLLECTION of TargetEntityType rather than a single row —
+  /// `ex.Violations` (D71). Without it the reload cannot tell "a collection of Violation" from "one Violation", and a
+  /// `foreach` over it would break on the way back out of the AMM.
+  [Id("3aace2e8-7466-473a-bf34-29c70ddd9dfe")] bool? TargetIsCollection;
+  /// Call: a stdlib/builtin call target (CallKind=Stdlib) — a typed FK into the StdlibMethod catalog, not a free string (Q-? resolved: catalog FK)
+  [Id("8c4000b8-e49a-4783-9f59-8e42e9f8f484")] StdlibMethod CallTarget;
+  /// Call: CallTargetKind Stdlib|Function — disambiguates which call-target FK is set
+  [Id("2c2bb699-a84d-4106-939d-83b8ab8de39e")] int CallKind;
+  /// Throw node: the thrown OsyExceptionKind (Exception|NotFound|Validation|Conflict|OAuthConnectionFailed). Catch node: the caught subtype to match (Exception = catch-all). Typed replacement for the v1 string ExceptionType/CaughtType
+  [Id("1c254b56-b164-48f2-83b1-8f9cbc9f67b0")] int ExceptionKind;
+  /// Var/Param: the general name binding this identifier resolves to (replaces the Function-specific RefVariable/RefAction — Q-D)
+  [Id("fe3113b3-72d3-4c75-b65b-be5f34e7892c")] ExpressionBinding Binding;
+  /// Embedded sub-query node: the element lambda parameter name (e.g. `s` in `Shares.Any(s => …)`) — declared as a binding on the owning Root's scope. P5-5.
+  [Id("3e4adead-0bdc-448c-9a5e-a893bae3ac8a"), MaxLength(100)] string? QueryElementParam;
+  /// Projection node: the INDEX lambda parameter of an index-aware `Select((v, i) => …)` (NO-JS capability arc L4) — the second parameter's name, bound to the element's 0-based position. Null for the ordinary one-parameter Select, which is every projection that does not ask where it is. IN-MEMORY ONLY: a data-store read has no row position without an explicit order, so the SQL path never sets it
+  [Id("d9f00711-88eb-4d30-b8db-959476c9672e"), MaxLength(100)] string? ProjectionIndexParam;
+  /// Query node (M134): the NAME of the int input that picks which of this query's OrderBy keys to sort by — a server-side (paged) sort the user chooses at runtime. The keys are the CANDIDATES the compiler enumerated; the request sends only an ORDINAL into them, so the client can never send an ORDER BY expression and the worst a hostile request achieves is sorting by a column the page already offers. Null for every query whose sort is fixed at compile time
+  [Id("700ab646-3fce-4f62-bc53-6ae19c81c5d8"), MaxLength(200)] string? SortSelectorInput;
+  /// EffectStub node (test effect stubs): the effect-dispatch key the stub configures — a runtime key string (e.g. `Clock.Set`, `Llm.Ask`, `Shipping.CreateShipment`), not a metadata reference. The interpreter keys the per-run clock / stub-lambda registry on it.
+  [Id("fe2d1619-fa03-4df3-a40a-20cd2a87ce15"), MaxLength(200)] string StubTarget;
+  /// Operand / argument / sort-key order among sibling children
+  [Id("b7142c3b-73a8-4153-8b6e-6c1c512f1ca1")] int Ordinal;
+  /// Source position: the 1-based LINE this node's first token is on. 0 for a node the parser never positioned (a synthesized default, a hand-built tree). The parser spans every node and the AMM used to drop all of it — ~92 reload sites rebuilt every statement with SourceSpan.None — so an assertion failure could not name the line it happened on, and no diagnostic over a reloaded tree could become an editor squiggle (friction A4.2)
+  [Id("f1b75b54-513b-4553-95ae-aa5fd809cbc5")] int Line;
+  /// Source position: the 1-based COLUMN of this node's first token
+  [Id("c7784e4e-690f-4281-9ef7-2503a6a2daeb")] int Column;
+  /// Source position: the node's length in characters — what an editor underlines. Line/Column alone locate a caret; a squiggle needs an extent
+  [Id("fa2ca4c6-f37a-4067-a138-ead0978fa2bb")] int Length;
+  /// Aggregate node: AggregateFunction Sum|Count|Avg|Min|Max|CountDistinct over a group
+  [Id("32b111c8-11f1-4361-8503-58d6e56ce4f3")] int AggregateFn;
+  /// EnumRef: the enum member (e.g. OrderStatus.Cancelled) as an FK — rename-safe, survives a re-seed (replaces the baked-literal ChoiceRef — Q-C)
+  [Id("86cd6ad9-f64d-4d88-9072-d5b1568113b0")] EnumValue RefEnumValue;
+  /// Literal: the value (Q-F: kept as Json across all literal types)
+  [Id("fccca7e1-8ce4-41b6-972a-b6309e578d73")] Json LiteralValue;
+  /// Unary/Binary/Logical/Coalesce operator: ExpressionOperator Eq Ne Lt Le Gt Ge Add Sub Mul Div Mod And Or Not Neg Coalesce
+  [Id("3eee6d90-0ecf-464e-a0af-3b4196206097")] int Operator;
+  /// OrderKey node: sort direction (true = OrderByDescending)
+  [Id("e05ddbd0-a1cc-4180-8a26-c3c1973400ec")] bool Descending;
+  /// The mutable-collection kind — CollectionKind List|Set|Map (List<T>/HashSet<T>/Dictionary<K,V>) — on a node whose
+  /// TYPE is one: a CollectionNew (`new Dictionary<K,V>()`), or a `JsonSerializer.Deserialize<T>` whose T is a
+  /// collection. NULL on every other node, and that null is now MEANINGFUL: "this node's type is not a mutable
+  /// collection". Pair it with ElementType/QueryElement (the element, or a Map's KEY) and ValueType/TargetEntityType
+  /// (a Map's VALUE).
+  /// ⭐ IT BECAME `int?` ON 2026-08-29, AND ITS OWN COMMENT ASKED FOR THAT. It used to be non-nullable, unlike its two
+  /// namesakes `ExpressionBinding.CollectionKind` and `ExpressionBindingType.CollectionKind` — so it read back as 0 on
+  /// every node, `CollectionKind.List` IS 0, and "was it set?" was unanswerable: any reader that asked got `List` for
+  /// free. Measured 2026-08-27: a Member-node loader consulted it, every entity-typed component member (`this.draft`,
+  /// `prefs`) reloaded as a `List<T>`, and `demo/dialog-demo` answered 500 on `GET /ui/Settings?data=1` while every
+  /// UI-driver suite stayed green. The second writer (Deserialize) is what forced the fix: with two writers, "which
+  /// kind of node is this" has to be answerable from the row, and a sentinel that collides with a real member cannot
+  /// answer it.
+  [Id("98f8d6fc-62bb-4417-8a31-ee9f65cde59f")] int? CollectionKind;
+  /// Member node: a NAME-ONLY member's SCALAR PropertyTypeKind — the type of a component's `decimal amount;` /
+  /// `int qty;` / `DateTime at;`, which carries no RefProperty FK (a component member is owned and recompiled with
+  /// its component, so there is no property row to point at) and no TargetEntityType (it is not a row).
+  /// ⛔ WITHOUT IT THE RELOAD DEFAULTED TO `String`, FOR EVERY DECLARED TYPE. Measured 2026-08-29: a component's
+  /// `decimal amount` came back from the AMM typed `string`, so `$"{amount:F2}"` in an action lowered to
+  /// `Convert.ToString(string, "F2")`, the client arm's `NumericTypeTag` answered null, and the author was told
+  /// "`Convert.ToString` has no implementation in the browser" — which is FALSE (osy-client implements it) — and
+  /// sent to a SERVER ROUND TRIP TO FORMAT A NUMBER. The entity-typed case was fixed in [[M-LISTIDX]]; that hunk's
+  /// own comment names this scalar half as "a real gap and a SEPARATE one — it needs its own repro and its own run".
+  /// This is that run.
+  /// ⚠ NULLABLE, and the null is meaningful: "this name-only member is not scalar-typed". `ElementType` and
+  /// `ValueType` beside it are non-nullable ints and so cannot say that — the same sentinel trap `CollectionKind`
+  /// carried until it became `int?` on the same day.
+  [Id("0b39ddaf-dc82-4f92-a24e-fe1a270b49d2")] int? MemberScalarType;
+  /// CollectionOp node (Phase 2): the operation — CollectionOpKind Add|Count|Contains|ContainsKey|Remove|Get|Set; Receiver is child @0, args @1..n
+  [Id("7008688b-d536-45f2-a51a-6030b429f3e9")] int CollectionOp;
+  /// The element's scalar PropertyTypeKind, for the two node kinds that describe a sequence's element and pair this column with QueryElement (the FK for a ROW element, which leaves this unread). CollectionNew (Phase 2): the element of `HashSet<Guid>`. Query (M143): the element a LINQ chain ranges over when it is a scalar — `names.Where(n => …)` over a `string[]` — which is exactly the case that has no EntityMetadata to point at. On a Query node a NULL QueryElement therefore MEANS "scalar, read this"; it is otherwise impossible, and the loader used to throw on it
+  [Id("bb8bfbaa-9b74-4182-b0ab-c4ee8f3659e6")] int ElementType;
+  /// Query node (P-27): the element a LINQ chain ranges over when it is an OPEN type parameter — the `T` of `component DataGrid<T>(T[] rows)`, where `rows.Where(…)` ranges over something no instantiation has fixed yet. Its own column for the reason every open type here is text: a type parameter is declaration-local and has no row an FK could point at, and PropertyTypeKind cannot spell it (String is 0, so ElementType alone would reload `T` as `string` for source that compiled cleanly). Set ⇒ QueryElement is null and ElementType is unread. Null for every closed element, which is nearly all of them. Mirrors ExpressionRoot.ResultTypeParam, which answers the same question one level up
+  [Id("751ca24e-7bb8-46e7-af7a-fb06976698ba"), MaxLength(100)] string? QueryElementTypeParam;
+  /// CollectionNew node (Phase 2): Dictionary<K,V> value scalar PropertyTypeKind; an entity value reuses TargetEntityType. Key/element is ElementType/QueryElement
+  [Id("68f7244b-011c-4e0f-9a92-50273e3c7dd8")] int ValueType;
+  /// Traverse node (§14/G5): walk an edge graph as undirected (`bidirectional: true`, match mode) — the RAG reference-walk shape; null/false for a directed traverse
+  [Id("679a8651-26b3-417c-acf3-363a8e8dc7b4")] bool Bidirectional;
+  /// Traverse node (§14/G5): the recursive-walk depth bound (`depth: n`)
+  [Id("99540e11-f470-4641-abc0-736263de27e6")] int MaxDepth;
+  /// Traverse node (§14/G5): the follow property — a self-referential EntityRef/Collection hop (upward/downward), or in match mode a plain edge-source column (e.g. osy.Reference.Source). A typed FK, not a string (rename-safe)
+  [Id("ddd7743d-83f6-41f4-9562-08f2593ef457")] PropertyMetadata TraverseFollow;
+  /// Traverse node (§14/G5): the match property for a join-table/edge walk — the edge-target column the recursive frame joins against (e.g. osy.Reference.Target); null for a normal self-referential traverse
+  [Id("be932b5f-fe10-4460-ba8f-9ef8c1eb8a81")] PropertyMetadata TraverseMatch;
+  /// Embedded sub-query node: max rows from a `.Take(n)` — the NODE-level mirror of ExpressionRoot.Limit, so an inline function-body query (`Order.Where(p).Take(5)`) carries its own shape (slice-6s)
+  [Id("642e10cc-52e2-468e-bd61-ef08f949507b")] int? Limit;
+  /// Embedded sub-query node: rows skipped by a `.Skip(n)` — the NODE-level mirror of ExpressionRoot.Offset (slice-6s)
+  [Id("4c5d8692-aae1-4828-b22a-b118a7e1ff1c")] int? Offset;
+  /// Embedded sub-query node: `.Distinct()` — SELECT DISTINCT over the projected/entity rows (linq_surface_spec §13; NODE-level mirror of ExpressionRoot.Distinct)
+  [Id("c7d94f2a-58b1-4e63-9af7-2d40e8c1b596")] bool Distinct;
+  /// Embedded sub-query node: the chain ended in `.ToList()`, so its result is a MUTABLE List<T> rather than a read-only collection. Without it a stored `Order.Where(…).ToList()` loaded back as a plain collection and `.Add` on the loaded tree was no longer legal — the round-trip gate caught it as Query/Include losing MutableCollectionType. It is a fact about the RESULT TYPE, not about the SQL, so nothing downstream of the read changes
+  [Id("cf5496a1-dae3-4671-84f0-0db4c39b300f")] bool Materialized;
+  /// Embedded sub-query node: `.Reverse()` — the surviving elements in the OPPOSITE order, and what `Last()` sets on an in-memory chain (NO-JS capability arc L3/L2). IN-MEMORY ONLY: table rows have no inherent order to reverse, so the SQL path never sets it and `Entity.Reverse()` is refused at resolve time. Applied AFTER Where/OrderBy and BEFORE Skip/Take, which is C#'s own clause order and the only one under which `xs.Reverse().Take(2)` means the last two
+  [Id("155ff727-d701-4707-bfc6-c0313bdf342e")] bool Reversed;
+  /// Embedded sub-query node: this query IS a `principal Name => <selector>;` selector, inlined at a use of the principal's NAME as a value (`new Doc { Owner = Alice }`). In a [Test] it resolves past the app's RLS floor, exactly like the selector `[runas(Alice)]` binds — naming who a test acts as (or points at) is authoring, not an access decision. Ignored outside a test, where a caller must not read a principal it cannot see
+  [Id("5f2b1c9e-7d34-4a86-9b0f-3e6c8a12d4b7")] bool IsPrincipalSelector;
+  /// WorkflowInbox node (Kind=WorkflowInbox): true for `Workflow.Inbox<T>()` — the CURRENT principal's queue — and false for `Workflow.Work<T>()`, the unfiltered board of every live slot on every run tracking T. One node kind serves both because it is the same read; this flag is the only difference, and it must round-trip or a persisted `Work` would come back as an `Inbox` and silently show the reader only their own work
+  [Id("3d7a0e41-9b28-45cf-8c16-a7e5f2049b6d")] bool MineOnly;
+  /// SetQuery node (Kind=SetQuery, parity L2): the ResolvedSetOp (Union=0|Concat=1|Intersect=2|Except=3, append-only) combining the two embedded row-query children — Left @0, Right @1 (linq_surface_spec §13)
+  [Id("8b3e5f1a-9c47-4d02-b6a8-f52e91d4c703")] int SetOp;
+  /// Embedded sub-query node: the chain demands a single element (Single/SingleOrDefault) — NODE-level mirror of ExpressionRoot.Single (slice-6s)
+  [Id("9acbefa9-c358-472e-904d-5e3e641547ed")] bool Single;
+  /// Embedded sub-query node: a zero-match yields null instead of failing (FirstOrDefault/SingleOrDefault) — NODE-level mirror of ExpressionRoot.AllowEmpty (slice-6s)
+  [Id("89defa4f-135f-40d8-bbf1-307e0383dc2a")] bool AllowEmpty;
+  /// Embedded sub-query node: more than one match takes the first (First/FirstOrDefault) rather than raising — NODE-level mirror of ExpressionRoot.TakeFirst (slice-6s)
+  [Id("136288bb-e258-42b1-965a-30c4c6b6ad97")] bool TakeFirst;
+  /// Inline query node: this query's `.Include(...)` hops (the node-scoped mirror of ExpressionRoot.Includes), keyed by OwnerNode (slice-6s)
+  /// Projection node (Kind=Projection): the non-grouped `.Select(o => o.Col)` scalar shape — a single unnamed column over the element (mirrors ResolvedProjection.IsScalar). False for an anonymous `new { … }` / named `new T { … }` projection. The projection target [Virtual] entity, when named, rides TargetEntityType (slice-6s-2)
+  [Id("85981502-6722-45b7-a626-75a7b005caeb")] bool ProjectionIsScalar;
+  /// Source node (Kind=Source): the ResolvedJoinKind Inner|Left|Cross of a multi-source query's additional FROM-list source — the join the range var (QueryElementParam) over the source set (QueryElement) makes to the frames in scope; the On predicate is the child @0 (absent for Cross). slice-6s-3
+  [Id("4af2ded6-9aa7-4040-a7ef-a8299862e45a")] int JoinKind;
+  /// ClientCall node (Kind=ClientCall, slice-7): the external operation this `await Client.Op(…)` targets — a rename-safe FK that recovers the client name (→ Configuration.Name), operation id, response type, and the ordered parameter list. The args are the ordered children; their parameter names are recovered from the operation at load (like CallFunction)
+  [Id("43ebc8af-09ad-4bbe-9c12-bb0968043229")] ExternalApiOperation ClientOperation;
+  /// RaiseEvent node (Kind=RaiseEvent, slice-7): the event raised on the bound entity's workflow — a rename-safe FK. Recovers the event name (the runtime deposit-matching key) via WorkflowEvent.Name; lets governance answer "what raises event X". The workflow + event are source-authored in the same unit, so this resolves from the compile unit's emitted rows
+  [Id("1b72de81-fb96-4f11-a41a-f36c824017a4")] WorkflowEvent RaiseEventDef;
+  /// RaiseEvent node (slice-7): the EventPayloadKind (None=0|Scalar=1|Entity=2|Choice=3) — how the Payload child (@1) serializes at runtime. Append-only int; mirrors the resolver's EventPayloadKind. EntityVar is child @0
+  [Id("491fa351-33c9-4684-ae1b-4718a4edf757")] int PayloadKind;
+  /// WorkflowContextRead node (WF-4): the WorkflowContextMember read — WorkflowStateName|WorkflowClaimName|WorkflowClaimToken|WorkflowBoundEntityType|DepositValue|DepositClaimName (one append-only value per source+member pair; leaf, no children)
+  [Id("f188d6e8-a84a-44a2-acbd-52439429d159")] int ContextMember;
+  /// TopicPublish (M256 §6b) and TopicListen (§6d-ii) nodes: the declared topic this `RoomFeed.For(roomId).Publish(x)`
+  /// puts a payload on, or this `RoomFeed.For(roomId).Listen()` receives from — a rename-safe FK, exactly like
+  /// RaiseEventDef and WorkflowDef. It is a REFERENCE and never a name because a topic whose name a publish no longer
+  /// matches fails SILENTLY on both sides: the publisher reaches nobody and the subscribers simply never update, with
+  /// nothing thrown and nothing logged. It also lets governance answer "what publishes to / listens on topic X".
+  /// ONE column for both kinds, not two: it answers ONE question — which topic does this node address? — and the two
+  /// halves of a topic must name it the same way or a rename could follow one and not the other. The topic is
+  /// source-authored in the same unit, so it resolves from the compile unit's emitted rows. The ADDRESS is children
+  /// @0..K-1 (one per declared TopicParameter); a publish's payload, when the topic Carries one, is child @K — K
+  /// coming from the topic's own parameter rows, so nothing here has to store a count that could drift from the
+  /// declaration. A listen has no payload child: what it carries is what arrives, not what it sends.
+  [Id("13040e45-9499-409f-92fd-2a9cac3c7855")] TopicDefinition Topic;
+
+  /// FetchQuery node (Kind=FetchQuery, M154): the DEFERRED component query member this read runs — its NAME. A name and not an FK because the member is a row of the SAME component this body belongs to, minted by the same compile: the body and its handle are emitted together and torn down together, so there is no rename an FK would survive that the name would not. The client turns it into that member's rootId and calls the ordinary served read.
+  [Id("09c75d27-4b47-4701-9416-f42d0341b746"), MaxLength(100)] string? FetchMember;
+  /// FetchQuery node (M154): the UiFetchShape — which part of the served response IS this expression's value (Rows|Row|Count|Exists|Scalar). Stored rather than derived because the response cannot say: a `Single(…)` answer and a one-element list are the same bytes, and reading the wrong one is a silent wrong answer rather than a failure. Its own column and NOT a second meaning for QueryOp, for the reason that column's own neighbours give.
+  [Id("4b448b47-cd67-43dc-bdcf-dce23e4e580f")] int FetchShape;
+
+  /// WorkflowStart node (Kind=WorkflowStart, harness-verbs): the workflow family this `await Workflow.Run(entity)` starts — a rename-safe FK recovering the workflow name at load + letting governance answer "what starts workflow X". The workflow is source-authored in the same unit (like RaiseEventDef), so it resolves from the compile unit's emitted rows. The entity to start on is child @0
+  [Id("aec9dd18-28a2-4678-adc8-d44be0dc1837")] WorkflowFamily WorkflowDef;
+  /// New-initializer node (Kind=Member under a New): true when this initializer was SYNTHESIZED from a property's
+  /// runtime default (FN-2), not authored. The interpreter evaluates it like any initializer, but the decompiler SKIPS
+  /// it so `new T{}` round-trips bare (the default renders at the property declaration). Synthetic-ness can't be
+  /// re-derived from the property (an explicit override of a defaulted property looks identical), so it is persisted.
+  [Id("6efda96f-4a55-4b6a-b3ae-15aad2b0742c")] bool IsSyntheticDefault;
+  /// New node (Kind=New): true when this is a `with` expression (`p with { X = 1m }`) — child @0 is then the DONOR
+  /// being copied and the initializers are children @1..N, rather than every child being an initializer. Persisted
+  /// rather than inferred because the donor cannot be told from an initializer by inspection: an initializer child is
+  /// a Member node carrying a RefProperty, and so is the donor of `q.Inner with { … }`. Reading one as the other is a
+  /// silent wrong answer (an initializer treated as a donor loses the write; a donor treated as an initializer looks
+  /// for a property that is not there), which is exactly the class of failure a flag exists to prevent.
+  [Id("2bb727a2-7e40-494b-a1d5-c5896896b4f2")] bool CopiesSource;
+  /// WorkflowStart node: true when the `Workflow.Run` was AWAITED (`await Workflow.Run(x)` — a durable Saga-style wait
+  /// on the child workflow that propagates its terminal outcome), false for the fire-and-forget form — mirrors
+  /// ResolvedWorkflowStart.Awaited. Persisted so the awaited/un-awaited distinction round-trips through the tree.
+  [Id("9e24286e-d6bd-4531-a3c4-fa94ffa6e227")] bool IsAwaited;
+  /// DurableOnce node: the author's STEP LABEL on the cross-run scoped form `Workflow.Once("charge-card", order.Id, key => …)`. It replaces the positional step id in the derived idempotency key's material, which is what makes that key survive an edit to the body. Positional identity is stable within one app version but NOT across versions (a step id is the call PATH), and the scoped form's whole promise is that a LATER run of the same order derives the same key so the receiver recognises a retry — a promise a positional id cannot keep across a deploy. The label is the anchor that can. Set on EVERY step an author writes: since 2026-08-09 the memo itself is keyed by the label, so it is the step's durable identity and not merely key material. Null only for a COMPILER-INSERTED (auto-lowered) step, which has no author to have written one and derives its identity from the egress it wraps
+  [Id("f6e4586e-3b1c-49ad-847b-08e755d0a66f"), MaxLength(100)] string? StepLabel;
+}
+
+/// One persisted Osy# expression/query tree (D-Q1) — the ONE row a tree is. Self-describing: carries the tree's purpose, result-type contract, reverse-owner index, and the tree itself in `Compiled`, so the LSP / validation / governance / impact-analysis can reason about a stored expression without its consumer. The batch-load + cache key (D18 load-by-Function generalises to load-by-Root).
+[Id("d9bf49bf-34de-44bd-a0b0-4625d8558c7e")]
+sealed entity ExpressionRoot {
+  /// Reverse-owner index: the metadata TYPE of the owning row (e.g. IndexMetadata). The primary access path is the consumer's forward FK to this root; Owner* is the governance reverse index — the emitter keeps both consistent
+  [Id("7a847f1b-5ee0-4857-b81e-ab31d3c78987")] EntityMetadata OwnerEntityType;
+  /// Source position of the whole DECLARATION this tree is the body of (a function's signature-through-body, a query expression) — the 1-based line. Not a node position: the top node is the body BLOCK, whose span is the `{`, so a diagnostic about "this function" cannot be read off it. One row per tree, so three ints here cost nothing
+  [Id("a48abfa6-281e-46d1-af1e-4749ee9647f1")] int Line;
+  /// Source position of the declaration: the 1-based column
+  [Id("0967911a-221d-4a8c-be9c-cd03d2eb10ed")] int Column;
+  /// Source position of the declaration: its length in characters
+  [Id("eabf312c-6488-4128-bd4f-91b800a3db13")] int Length;
+  /// Source position: the `.osy` FILE every node in this tree came from. On the ROOT rather than per node because a body is parsed from ONE file, so per-node it would be the same string repeated across every row of the hottest table in the AMM. The NAME, deliberately, not SourceSpan.FileId — that is an index into a PROCESS-WIDE intern table, so persisting it would store a reference meaningful only inside the process that minted it (ledger F2/F9); the loader re-interns the name through SourceSpan.In(file)
+  [Id("b4f082ff-28e9-4769-aa96-53b308db68a7"), MaxLength(260)] string? SourceFile;
+  /// Result contract: the result may be null
+  [Id("ec4e72ba-a616-4ac5-a481-84a6fb5e6f07")] bool ResultNullable;
+  /// Reverse-owner index: the id of the owning row
+  [Id("58f0fcb7-3106-4140-ac86-3b259f042367")] Guid OwnerId;
+  /// Scope contract: the implicit-self entity for entity-level predicates (D21 — a bare property name resolves to a column of this row)
+  [Id("80f6ea80-ca45-4d8e-bcf3-ef77cf94572e")] EntityMetadata SelfEntityType;
+  /// Result contract: the entity/projection type this tree evaluates to; set when the result is an entity (else ResultTypeKind types a scalar)
+  [Id("74702a2b-11c6-4783-8455-a4e876761c8c")] EntityMetadata ResultEntityType;
+  /// Result contract: the tree evaluates to a collection of the result type
+  [Id("84a80f9e-bdcd-46e5-8661-24996ce3eb05")] bool ResultIsCollection;
+  /// Result contract: the tree is a `stream<T>` producer — its items arrive over time rather than as one value (M101). Distinct from ResultIsCollection, which is a collection the caller HOLDS.
+  [Id("cdcc30dd-dcfb-44ac-8554-8d3b63eea13e")] bool ResultIsStream;
+  /// Result contract: the CollectionKind (List|Set|Map|StringBuilder) when the result is a class-runtime mutable collection — `List<Order>`, `HashSet<string>` — rather than the query's `T[]` shape. NULL for every other result, and DISJOINT from ResultIsCollection on purpose: the two are different types that both hold many items, and storing `List<T>` as the array shape would decompile it as `T[]` (F38).
+  [Id("27b73cb7-1b98-49c9-983f-52e07f773d3d")] int? ResultCollectionKind;
+  /// Result contract: a `Dictionary<K,V>` result's VALUE scalar PropertyTypeKind — ResultTypeKind/ResultEntityType type the KEY, exactly as they type the element of a List. Null for a non-Map result or an entity-typed value. A Map is the one return shape needing TWO type slots, and without this one `Dictionary<string, decimal>` had no contract to store: the writer refused it, which is what made an auto-property of that type fail the compile under the name of the accessor the author never wrote. Mirrors ExpressionBinding.ValueScalarType, which is why the same type has always worked as a parameter or a local
+  [Id("6e9890ea-20a4-4ebf-b2ab-c47afd11b35e")] int? ResultValueTypeKind;
+  /// Result contract: a `Dictionary<K,V>` result's VALUE entity/class type, when the value is an entity (else ResultValueTypeKind). Mirrors ExpressionBinding.ValueEntityType
+  [Id("4324f149-fe93-41e0-9ed9-ce6526a0ecbd")] EntityMetadata ResultValueEntityType;
+  /// Result contract, RECURSIVE: the result type as an ExpressionBindingType descriptor, written when the flat Result* columns above cannot describe it — a `Dictionary<string, List<decimal>>`, a `List<List<int>>`, any nesting past one level. ⚑ THE SAME DESCRIPTOR A BINDING USES, deliberately: a parameter, a local and a field have carried nested types since D256, and only a RESULT could not, which is why an auto-property (lowered to a `.get_<Prop>` accessor — a function returning the property's type) was the shape that exposed it. Reusing the binding's descriptor rather than widening the flat pair to a triple is the whole point: a third slot buys `Dictionary<K, List<V>>` and fails on the next nesting, and entrenches the non-recursive shape that caused the bug. Null on almost every root — the flat columns still carry the ordinary cases, so this costs nothing until it is needed. ⚠ A bare Guid rather than an FK, and it has to be: ExpressionRoot is the only real ENTITY here (the one with a table), while nodes, bindings and binding-types are row SHAPES serialized into its `Compiled` document — and a persisted entity cannot form a relation to a class, correctly, because a class has no table to point at. Same shape as OwnerId above. The id is resolved against the root's own descriptor rows, which is where it always was
+  [Id("2b1c0d84-3f6a-4e17-9c2d-5a8e11b7f430")] Guid? ResultTypeId;
+  /// Reverse-owner index: which slot on the owner this tree fills (e.g. `Where`, `invariant#2`, `Calculation`)
+  [Id("8c941703-7d73-4a65-9966-6e955a1ef403"), MaxLength(100)] string? OwnerSlot;
+  /// The NAME of the function this tree is the body of, for the bodies that have no `Function` row to hold one — a workflow's Start / state `enter` / route arm / milestone / reminder bodies. Every other tree leaves it null, because a function's identity lives on its Function row and duplicating it here would give a rename two places to disagree. It is load-bearing rather than descriptive: a durable step's id begins with its declaring function's NAME, so bodies sharing one name share one step namespace within a run — the second body's `Workflow.Once` reads back the first's recorded result and its effect never runs. Derived from author-chosen names (state, event, slot, reminder) so it survives a redeploy the way a step label does
+  [Id("5bb0477b-e5cd-4d44-a060-afcf3f9dd2c1"), MaxLength(200)] string? BodyName;
+  /// Result contract: PropertyTypeKind of a scalar result; ignored when ResultEntityType is set
+  [Id("406fdf29-b6a9-4f6c-ade9-7311383d42c8")] int ResultTypeKind;
+  /// Result contract: the TYPE PARAMETER a method of a generic class returns (`T Get()` on a `class Box<T>`) — its name, since a type parameter is declaration-local and has no row to FK to. Null for every closed return, which is nearly all of them. One Function row serves every instantiation, so the OPEN type is what is stored and the CALL SITE substitutes the receiver's argument. Without it such a return has no contract at all, and the writer refuses loudly rather than storing void (which would decompile to `void Get()` and recompile as a different function)
+  [Id("b5d9e6a3-1f74-4c28-8e60-3a7b2d95f014"), MaxLength(100)] string? ResultTypeParam;
+  /// ExpressionPurpose: Predicate|Value|Projection|Query|RowSecurityFilter|Traverse|Computed
+  [Id("93894fb8-06b7-4062-9300-308a98426e85")] int Purpose;
+  /// THE TREE (M238): every node, binding, binding-type and include-hop this root owns, as ONE document — the only form they have. Loading a tree is this column; there is no node table to walk and no per-parent Children query, which also retired the pre-load apparatus whose covered-vs-not-covered distinction had already shipped a silently half-loaded tree. The root's OWN columns are not copied in here: it is a real row, and a column stored twice can disagree with itself. Ids stay IDS — RefProperty/QueryElement/TargetEntityType are Guids resolved through the in-memory model on load (FindPropertyById/ResolveEntity, both free), never resolved metadata, which would duplicate one property's definition into every tree referencing it and go stale. Carries a FormatVersion: on a mismatch the app is recompiled rather than migrated, which is legitimate only because an app is a compiled artifact and there are no live systems. ⚑ It is also the COMPLETION marker: it is written last, so a root without one is a serialize that died part-way, and the owned-tree sweep collects it
+  [Id("e2749cbf-1325-4292-aec7-a6fc0963f597")] Json Compiled;
+}
+
+/// A named binding declared by an ExpressionRoot's scope contract (Q-D): the general replacement for the Function-specific RefVariable/RefAction pair. One row per in-scope name — lambda/fn parameter, query element, function variable, action result, let-local, implicit-self, or group key — so a security filter or UI binding can declare its inputs without a Function. An ExpressionNode's Binding FK resolves an identifier to one of these.
+[Id("2922a72c-7f63-4821-a43d-8109e1163cb3")]
+class ExpressionBinding {
+  /// PropertyTypeKind when the binding is a scalar; null/0 for an entity binding (uses EntityType)
+  [Id("d1b37ff0-bb31-4e02-ad6e-0b5982f82f4c")] int? ScalarType;
+  /// The binding holds a collection of its type
+  [Id("504e48d3-d327-4fa5-8e2e-ca8735a004b7")] bool IsCollection;
+  /// The entity type this name binds to, when entity-typed (else ScalarType types a scalar)
+  [Id("200f9f9a-8d1f-44d2-8ac4-1aa5a7db8293")] EntityMetadata EntityType;
+  /// The ENUM this scalar binding was DECLARED as — `Machine machine`, not merely `int`. Set beside ScalarType (an enum stores as its backing scalar, so both are true of it); null for a plain scalar.
+  ///
+  /// ⚠ WITHOUT IT A DECLARED ENUM RELOADS AS A BARE `int`, AND THAT IS A 500 ON THE PUBLIC REST SURFACE. `ScalarType.Enum` is the resolver's annotation naming the enum a parameter was declared with; it was never persisted, so an AMM round-trip erased it and every transport that binds a function's arguments from JSON — `app.Apis`, MCP, agents — saw `Int32` and nothing else. It could not accept the member NAME a REST caller sends (the raw string reached Npgsql: "Writing values of 'System.String' is not supported for parameters having NpgsqlDbType 'Integer'"), it could not name the closed set in a refusal, and the published OpenAPI advertised a bare integer for a field whose only sensible wire form is a name. One absent FK, three defects.
+  [Id("bd41a7f2-0e5c-4a8b-9d16-7c30f5b284ae")] Enum EnumType;
+  /// The tree whose scope contract declares this binding
+  [Id("7ddf8932-37b5-4520-b33e-a4d0be8b71e0"), Required] ExpressionRoot Root;
+  /// ExpressionBindingKind: LambdaParam|QueryElement|FunctionVariable|ActionResult|Local|Self|GroupKey
+  [Id("a18289d5-2b37-4bfa-9490-6a7d416c7d96")] int BindingKind;
+  /// The identifier as introduced (e.g. `o`, `l`, `user`, `g`)
+  [Id("553256b6-7fd8-456d-810b-f1292e145705"), MaxLength(100)] string Name;
+  /// Declaration order (positional for parameters)
+  [Id("838f4c8c-78c6-443b-b52e-878b580a0682")] int Ordinal;
+  /// FunctionVariable (parameter) binding: the parameter was declared nullable/optional (`T? p`) — recovered so the decompiled signature keeps its `?` and an omitted optional binds to null. Null/false for a required parameter or a non-parameter binding.
+  [Id("b177a61e-0c2e-4d7a-9f83-2a4b6c8d1e05")] bool Nullable;
+  /// FunctionVariable (parameter) binding: the parameter was declared `params T[] rest` (class parity slice 9) — the one that collects the trailing arguments. Recovered so the decompiled signature keeps the word.
+  ///
+  /// ⚠ It must persist even though the CALL-SITE lowering hides it: an expanded call is rewritten to one array argument before anything binds, so a decompiled `Sum(decimal[] xs)` and its decompiled call sites recompile together and the round-trip is self-consistent WITHOUT this column. What breaks is the next HAND-WRITTEN `Sum(1m, 2m)` — the exported app has silently stopped accepting the call form it was written for, which is the M123/M124 silent-widening family in the narrowing direction.
+  [Id("d6bdb142-57b7-4055-854a-f47f1a1094fa")] bool IsParams;
+  /// Phase 2: when set, this binding is a mutable collection (CollectionKind List|Set|Map) — element/key type from ScalarType/EntityType; null for a scalar/entity/sequence binding
+  [Id("2d866500-f593-44c0-931a-54bee909108b")] int? CollectionKind;
+  /// Phase 2: Dictionary<K,V> binding — the value scalar PropertyTypeKind (key is ScalarType/EntityType); null for non-Map or an entity value
+  [Id("b4c89b58-a37b-41a0-806c-3f16b957b06e")] int? ValueScalarType;
+  /// Phase 2: Dictionary<K,V> binding — the value entity type when the value is an entity (else ValueScalarType)
+  [Id("84b63d5d-f4cc-4c0c-9368-2ddf9552d5ce")] EntityMetadata ValueEntityType;
+  /// ExpressionBindingTypeShape — this binding's type when it is neither an entity nor a scalar: Callable|TypeParam|Exception|Stream|Null|StyleValue|Unknown. Null = the ScalarType/EntityType/IsCollection/CollectionKind columns describe it. Without it those shapes persisted NO type at all and reloaded as a string (PropertyTypeKind.String is 0), which surfaced at commit as a member read failing on a node guid
+  [Id("f0a2c5d1-7b64-4e83-9c22-51db8e07a4f6")] int? TypeShape;
+  /// TypeShape=Callable — the callable's PARAMETER COUNT (ScalarType/EntityType then type its return; both null = void). Null for every other shape
+  [Id("9c47b1e2-0d38-4a75-b6f1-3e82c9074d5b")] int? TypeArity;
+  /// TypeShape=TypeParam — the generic type parameter's name (the `T` of `component DataGrid<T>`). Null for every other shape
+  [Id("6ba39d74-c518-4f92-8e07-2a41f5c6b083"), MaxLength(100)] string? TypeName;
+  /// An ENTITY-typed binding whose type is a CONSTRUCTED generic — its type ARGUMENTS as source text, comma-joined (`Report`). Null for the ordinary non-generic binding, which is nearly all of them. The EntityType FK names `Box`; only this says `Box<Report>`, and a local that loses its arguments makes every later read off it substitute against nothing — `b.Value` comes back as the bare parameter `T`, which has no properties. TEXT because an argument may be a SCALAR (`Box<decimal>`), which has no row to FK to
+  [Id("4e2b9a17-8d63-4f05-a71c-2c9f0b84e613"), MaxLength(400)] string? TypeArgs;
+  /// D256 ① — the RECURSIVE descriptor for this binding's ELEMENT, set only when the flat columns above cannot hold it (a nested collection: `List<List<int>>`). When set it IS the element type and ScalarType/EntityType/the shape columns are ignored for that slot. For a Callable binding the "element" is its RETURN and for a TypeParam its BOUND, exactly as in the flat columns
+  [Id("86347f31-5b0c-433b-8439-f9ad7b37cb57")] ExpressionBindingType ElementType;
+  /// D256 ① — the RECURSIVE descriptor for a Dictionary's VALUE, set only when ValueScalarType/ValueEntityType cannot hold it (`Dictionary<K, List<V>>`). When set it IS the value type
+  [Id("28ff4377-679f-475c-bffa-6661f03ef3f1")] ExpressionBindingType ValueType;
+  /// TypeShape=AnonymousRow — the row SHAPE of an anonymous projection, `name:kind` per member joined by `|` (`Name:1|Runs:3`), in projection order. The type of `Select(o => new { … })`'s rows is synthesized rather than declared (D-ANONROW), so there is no EntityMetadata row for EntityType to point at — and a binding that persisted nothing reloaded as UnknownType, which is what a `foreach` over such rows used to fail on. A member name can hold neither `|` nor `:`, so the join is unambiguous. Null for every other shape
+  [Id("beae1724-1ac4-483c-9ee1-e7742a9c18ed"), MaxLength(2000)] string? RowShape;
+}
+
+/// One node of a RECURSIVE type descriptor — what a binding's element or dictionary value is, when the binding's own flat columns cannot say it. `List<List<int>>` and `Dictionary<string, List<int>>` are the cases that forced it: the columns above hold ONE level of nesting, so a nested collection had nowhere to go, and the two halves of that fact disagreed — the element half threw while the value half wrote nothing and reloaded as a type the source never wrote.
+///
+/// A TREE, SHAPED LIKE ExpressionNode AND FOR THE SAME REASON. Each row points UP (`Parent`) rather than down at its children, so the existing leaf-first teardown orders these rows with the machinery that already orders nodes, and no FK has to be released before a delete. The top row of a descriptor points at the BINDING it types (`Binding` + `Slot`); every row below it points at its parent. Exactly one of the two is ever set.
+///
+/// A DESCRIPTOR IS WRITTEN ONLY WHEN THE FLAT COLUMNS CANNOT HOLD THE TYPE, so the overwhelmingly common binding — a scalar, an entity, a `List<int>` — still costs exactly one row and no extra read. The rule for a reader is one line and absolute: when a descriptor exists for a slot it IS that slot's type, and the flat columns for it are ignored.
+[Id("64a38b72-a096-4dcb-ac96-1932126e21c2")]
+class ExpressionBindingType {
+  /// The tree this descriptor belongs to — the batch-load key and the lifecycle key (a recompile drops every row of a tree by Root, exactly as it drops nodes and bindings)
+  [Id("f680a6f8-a7b2-4bce-93db-4e99474b4d4b"), Required] ExpressionRoot Root;
+  /// The descriptor row one level up, set on a NESTED row only. Null on the TOP row of a descriptor, which nothing points up at — the BINDING points down at it (ExpressionBinding.ElementType/ValueType), the same direction ExpressionRoot.RootNode points at its node tree, and for the same reason: a reader that has the binding in hand must be able to tell that a descriptor exists WITHOUT a query, or every tree load pays for a feature almost no tree uses
+  [Id("27c26c2a-982c-4c9c-81c0-b6d188fb9e63")] ExpressionBindingType Parent;
+  /// ExpressionTypeSlot: which slot of `Parent` this row fills — Element (a collection's element, a callable's return, a type parameter's bound) or Value (a Dictionary's value). Meaningless on a top row, whose slot is named by WHICH binding FK points at it
+  [Id("b5439868-d8ec-4f49-8f41-d7322b394c83")] int Slot;
+  /// ExpressionBindingTypeShape — this level's type when it is neither an entity nor a scalar. Null = the ScalarType/EntityType/IsCollection/CollectionKind columns describe it. Same vocabulary as ExpressionBinding.TypeShape, because it is the same question one level down
+  [Id("1e761efe-f078-48df-9346-ed2e2cc093e1")] int? Shape;
+  /// PropertyTypeKind when this level is a scalar; null when it is an entity (uses EntityType) or a wrapper
+  [Id("b4f8d8a7-11ff-4e00-91e0-23b449df110a")] int? ScalarType;
+  /// The entity type at this level, when entity-typed (else ScalarType types a scalar)
+  [Id("636fcc1a-8344-4e23-b859-c17a92b3024f")] EntityMetadata EntityType;
+  /// This level is a query-result sequence (`T[]`) of whatever its own Element resolves to
+  [Id("71947276-8089-448f-8a4c-e47cd4e179d9")] bool IsCollection;
+  /// CollectionKind (List|Set|Map|StringBuilder) when this level is a class-runtime mutable collection; null otherwise. DISJOINT from IsCollection, exactly as on the binding — the two are different types that both hold many items
+  [Id("c59f3aec-1e11-42f3-aa74-dc567a27aaef")] int? CollectionKind;
+  /// Shape=TypeParam — the generic type parameter's name. Null for every other shape
+  [Id("8f51d072-3bc7-4cf1-b128-5a39ca62e5d7"), MaxLength(100)] string? TypeName;
+  /// Shape=Callable — the callable's PARAMETER COUNT. Null for every other shape
+  [Id("97f8556c-cd6c-4135-9b9e-eebc98549fdb")] int? TypeArity;
+  /// Shape=AnonymousRow — the row SHAPE, `name:kind` per member joined by `|`. Null for every other shape
+  [Id("79c5eb81-6ebf-4a5f-90c5-c36402400082"), MaxLength(2000)] string? RowShape;
+}
+
+/// One navigation hop of an eager-load include path on a query root (Q-E — truth-in-metadata FK chains, replacing the legacy semicolon `IncludePaths` string). A path (e.g. `.Include(o => o.Lines).ThenInclude(l => l.Product)`) is the hops sharing one PathOrdinal, ordered by HopOrdinal; the decompiler regenerates the include expression by grouping on PathOrdinal.
+[Id("03365f53-393f-493b-bfeb-7ff37dffc31f")]
+class ExpressionIncludeHop {
+  /// The navigation property (EntityRef/Collection) followed by this hop
+  [Id("d0f535fa-3ec3-4b7a-a421-d69d71e84b8b")] PropertyMetadata Property;
+  /// The query root this include path belongs to
+  [Id("b94e5c01-90d2-486d-97ee-2efc2fb333aa"), Required] ExpressionRoot Root;
+  /// The owning query NODE for an inline (function-body) query's includes; null for a top-level query root's includes (which key off Root). Lets an embedded query carry its own `.Include(...)` chain (slice-6s)
+  [Id("74153e06-94b2-45de-b27b-e1aede943d02")] ExpressionNode OwnerNode;
+  /// Groups hops into one Include(...) path; the path's order among the root's includes
+  [Id("407c6552-c832-47be-a5ce-e61a7b7ed3d9")] int PathOrdinal;
+  /// Position of this hop within its include path (0-based)
+  [Id("1367e056-1a72-4fd2-b44a-57c576ee47a1")] int HopOrdinal;
+}
+
+/// A catalogued callable target for Osy# Call nodes — a stdlib/builtin or instance method (Math.Round, Text/String.Contains, Date.AddDays). The typed FK target for ExpressionNode.CallTarget, making call targets rename-safe, governable, and impact-analysable rather than free strings. Seeded from the stdlib surface in a later phase; empty in Phase 0 (no Call consumer yet).
+[Id("ac517380-473d-43c5-acc3-830f6874b6b5")]
+sealed entity StdlibMethod {
+  /// Maximum argument count; -1 for variadic
+  [Id("0af9e918-02fc-4e3a-9766-389e697c0222")] int MaxArity;
+  /// The owning namespace / receiver type (e.g. Math, Text, String, Date)
+  [Id("2612abf5-9c61-47c5-abb3-e2559341720d"), MaxLength(200)] string Namespace;
+  /// PropertyTypeKind of the scalar result; ignored when ReturnEntityType is set
+  [Id("e5de7e68-a97f-478f-ae80-30983da47c92")] int ReturnType;
+  /// The method returns a collection of its result type
+  [Id("5eface6c-4617-4b13-b82a-08bcca503b24")] bool ReturnsCollection;
+  /// The entity type of the result, when the method returns an entity (else ReturnType types a scalar)
+  [Id("dedad5da-6999-4474-b1c1-715dc2d6334b")] EntityMetadata ReturnEntityType;
+  /// The method name (e.g. Round, Contains, StartsWith, AddDays)
+  [Id("3ce2b50b-fcbc-4780-a1af-d401060d388f"), MaxLength(200)] string Name;
+  /// Minimum argument count
+  [Id("18e840cb-aafa-460c-8dfc-74d8f058d97f")] int MinArity;
+}

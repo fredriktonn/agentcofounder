@@ -1,0 +1,25 @@
+/// Application metadata including name, startup configuration, and version tracking
+[Id("572bcf32-75b2-45d6-b5b0-2860cafcc4cf")]
+sealed entity ApplicationInformation {
+  /// Display name of the application
+  [Id("06d01c8c-ff12-4ab3-b8f7-990d8f31e91a"), MaxLength(255)] string Name;
+  /// Semantic version of the application metadata model
+  [Id("9f2085d1-69d5-4b43-a74d-1959ef2ca2ea"), MaxLength(50)] string? ModelVersion;
+  /// URL or path to the application logo image
+  [Id("f6a96386-00b7-4c04-9ad6-54543c87e958"), MaxLength(500)] string? Logo;
+  /// Default embedding block name for entity rag: blocks
+  [Id("97e0bea6-5167-4f69-af36-60a3f81479b6"), MaxLength(200)] string? DefaultEmbedding;
+  /// Incremental version number of the data schema
+  [Id("bc57110e-213b-4693-939a-2fc321646f2c")] int SchemaVersion;
+  /// Default LLM block name for Pulse generation
+  [Id("bc8f06c8-f068-4aa3-960f-22c2a2da0e39"), MaxLength(200)] string? DefaultPulseModel;
+  /// Timestamp of the most recent schema evolution run
+  [Id("a45ae352-9101-4c64-861b-57fa6896f2fa")] DateTime LastSchemaUpgrade;
+  /// Function executed when the application starts
+  [Id("656a96ac-2251-48f1-be98-8c3a32cd4351")] Function StartupFunction;
+  /// Default RAG staleness coalescing window in seconds
+  [Id("c353826b-0c59-4265-b90b-b84cdcd6f920")] int DefaultCoalesceSeconds;
+  /// The currently active theme for this application (UiTheme — the legacy Theme entity was deleted)
+  [Id("67ab40fa-7f8a-4458-b797-6c72ad1b9c0e")] UiTheme ActiveTheme;
+  [Id("d155cbd0-76a0-46ba-b870-e61896dfe0b4"), ForeignKey(Application)] ClassificationRoleConfig[] ClassificationRoles;
+}

@@ -1,0 +1,77 @@
+// M256 — TOPICS: the AMM shape of a named, addressable realtime destination.
+//
+// A `topic Name(params) { Candidates; Publishers; Carries; Delivery; }` lowers to one TopicDefinition plus one
+// TopicParameter per address parameter. Every predicate is an ExpressionRoot FK and every type reference is a real
+// FK — the same discipline WorkflowModule.osy holds itself to, and for the same reason: a name stored as a string is
+// a reference that no rename can follow.
+//
+// ⚑ WHY THE PARAMETERS ARE PERSISTED AT ALL, since a topic could have been keyed by a string. They are the topic's
+// ADDRESS: `RoomFeed.For(a)` and `RoomFeed.For(b)` are two topics, and at subscribe time the server must bind the caller's
+// arguments before it can evaluate `Candidates` at all. Storing the parameter list is what lets the join gate be
+// evaluated server-side rather than trusted from the client — which is the one thing about topics that must stay
+// the platform's (M256 §0a).
+//
+// ⚠ NO CONSTRAINTS OR CHOICES ON THESE ENTITIES — they break PMM self-bootstrap. `Delivery` and `TypeKind` are ints
+// with their meanings documented here, exactly as EventParameter.TypeKind is.
+
+/// A declared realtime topic: who may join it, who may publish to it, and what it carries.
+[Id("42cddc79-a3e6-49ed-9099-221da0ef57f2")]
+sealed entity TopicDefinition {
+  /// The topic's declared name — and its stable identity, since a subscribe names it.
+  [Id("5591adaa-ae8a-4499-8a29-0c50dad52e0b"), MaxLength(255)] string Name;
+
+  /// WHO MAY SUBSCRIBE — the `principal => predicate` body, evaluated at subscribe with the topic's arguments in
+  /// scope. Never null on a topic that compiled: a topic with no join rule is refused at compile time (M256 rider A),
+  /// because a topic nobody may join fails as a page that silently never updates.
+  [Id("2d41bec4-46cb-456a-87a5-e0480ca9e372")] ExpressionRoot Candidates;
+  /// The `Candidates` lambda's principal parameter name — the gate supplies the tested principal under it, exactly
+  /// as SlotDefinition.CandidateVarName does.
+  [Id("d1d804e6-61a4-442b-8057-5f6b3d70be65"), MaxLength(255)] string? CandidateVarName;
+
+  /// WHO MAY PUBLISH. NULL means "the same as Candidates" — the design's default, because a member of a room may
+  /// speak in it. The two cases that differ (a broadcast topic; a firehose) are then one declared line rather than a
+  /// rule hidden in a function body.
+  [Id("bba51a30-8e78-48bf-967b-b98378c8640d")] ExpressionRoot Publishers;
+  /// The `Publishers` lambda's principal parameter name — the gate supplies the tested principal under it, exactly
+  /// as `CandidateVarName` does for `Candidates`.
+  [Id("9db53759-819e-478d-b242-cd630eaf7795"), MaxLength(255)] string? PublisherVarName;
+
+  /// The payload type, or NULL for a signal-only topic. One FK covers both cases an app can write, because an app
+  /// `class` is an EntityMetadata row like an `entity` is — the difference is IsClass, not a second reference kind.
+  [Id("1b2b3d5f-5be9-40a6-96fd-d832eef762aa")] EntityMetadata Carries;
+
+  /// 0 = Ephemeral (default) — no persistence, and deliberately NO offline delivery: a typing indicator has no
+  /// meaning to someone who was not there. 1 = Durable — delivered offline through its persisted rows.
+  [Id("2ea700b0-a493-48c0-ad90-623432a94419")] int Delivery;
+
+  /// PRESENCE (M256 §5): true when this topic's membership is DERIVED from who is connected to it. The platform adds
+  /// an entry when a connection subscribes and removes it when that connection goes, so a crashed client cannot stay
+  /// online for ever — and an app can never write somebody ELSE's entry, which is the property that makes the set
+  /// trustworthy. `Announce` decorates your own entry; it does not create it.
+  ///
+  /// ⚑ Invisible mode is then free and needs no flag: the app simply declines to announce.
+  [Id("95ad8374-be1b-4022-9dd3-acb3603b9b7d")] bool IsPresence;
+
+  /// The source module this topic was declared in, so a full-app export regenerates it into its own file (D2).
+  [Id("4534185d-facc-4dae-9e9d-9a160bd52821"), MaxLength(255)] string? SourceFile;
+}
+
+/// One of a topic's ADDRESS parameters. Same shape as EventParameter, because it answers the same question: what
+/// type is this value, so the server can bind an incoming argument to it.
+[Id("138206bd-178c-4613-8822-9c1e7548f19b")]
+sealed entity TopicParameter {
+  /// The topic this parameter belongs to
+  [Id("15f84040-2818-4f48-a1c2-cc08877df27a"), Required] TopicDefinition Topic;
+  /// Parameter name — what the predicate body refers to (`roomId`)
+  [Id("93276103-f6e0-416b-afcc-17582cf8b186"), MaxLength(255)] string Name;
+  /// Declaration order — a subscribe supplies arguments positionally
+  [Id("3982c8b2-8436-4522-9426-0fc3b49ba173")] int Ordinal;
+  /// 0 = Scalar, 1 = Entity, 2 = Enum
+  [Id("82a04124-1b9b-4e36-81ac-c51d9ae9e46b")] int TypeKind;
+  /// For TypeKind=Scalar: the PropertyTypeKind of the scalar
+  [Id("6f046bf1-4f52-43bb-9937-5fccdeba08ca")] int? ScalarType;
+  /// For TypeKind=Entity: the entity type
+  [Id("717f3d41-36a8-4d82-87ad-5c1861d8c68e")] EntityMetadata EntityType;
+  /// For TypeKind=Enum: the enum type
+  [Id("d129a40b-0a82-4b1c-9604-fbce5a859b38")] Enum EnumType;
+}
